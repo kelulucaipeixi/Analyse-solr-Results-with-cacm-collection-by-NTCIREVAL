@@ -1,0 +1,7 @@
+This is a demo using solr to index the cacm collection, and then use NTCIREVAL to analyse the results.
+To run the demo, the usual procedure is as follows:
+
+(1) Run python allToParser.py to get a .xml formation file from cacm.all in cacm folder, which can be indexed by solr system.
+(2) Run getResults.py to get the query_results from solr system.
+(3) Run dealQrels.py to transform qrels.text from cacm folder to a  NTCIR-format qrels file.
+(4) Use linux operaing system and analyse the results with NTCIREVAL. Finally, get the NTCIREVAL_results.test.nev
