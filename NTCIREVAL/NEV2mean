@@ -1,0 +1,46 @@
+#!/bin/sh
+# based on nev or Dnev files,
+# compute mean performance for each run for each metric
+
+if [ $# -lt 4 ]; then
+    echo "usage: `basename $0` <runlist> <topicidfile(dup OK)> <nevsuf> <metric>...">&2
+    echo " e.g.: `basename $0` runlist test.tid test.nev Q-measure MSnDCG@1000">&2
+    echo " e.g.: `basename $0` runlist Dtest.Iprob.tid l10.Dnev Q@0010 MSnDCG@0010 I-rec@0010 D#-Q@0010 D#-nDCG@0010">&2
+    exit 1
+fi
+
+RLIST=$1
+TIDLIST=$2
+NEVSUF=$3
+shift
+shift
+shift
+
+#$@ now contains metrics
+
+T=$HOME/bin
+AWK="/usr/bin/env gawk"
+
+# number of topics
+NTOPICS=`wc -l $TIDLIST | $AWK '{print $1}'`
+
+for METRIC in $@; do
+
+ OUTF=$RLIST.`basename $TIDLIST .tid`.$NEVSUF.$METRIC
+
+ cat $RLIST | while read RUN; do
+
+  cat $TIDLIST | while read TID; do
+
+   grep "^$TID ${METRIC}=" $RUN.$NEVSUF
+
+  done | $AWK '{sum += $NF}
+  END{if(NR==0){ print "'$METRIC' not found" }
+      else{ printf( "'$RUN' %.4f\n", sum/'$NTOPICS' )}
+  }'
+ 
+ done > $OUTF
+
+ echo "created $OUTF" >&2
+
+done

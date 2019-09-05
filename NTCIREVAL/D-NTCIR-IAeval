@@ -1,0 +1,81 @@
+#!/bin/sh
+# compute IA metrics
+
+if [ $# -lt 5 ]; then
+    echo "usage: `basename $0` <topicIDfile> <intprobfile> <Irelsuf> <doccutoff> <evaluationname> [runlist]" >&2
+    echo " e.g.: echo TRECRUN | `basename $0` Dtest.Iprob.tid Dtest.Iprob test.Irelv 10 l10" >&2
+    exit 1
+fi
+
+TIDFILE=$1
+INTPF=$2
+IRELSUF=$3
+CUTOFF=$4
+OUTSTR=$5
+shift
+shift
+shift
+shift
+shift
+
+# only one cutoff allowed
+COMPOPT="-cutoffs $CUTOFF"
+
+AWK="/usr/bin/env gawk"
+CUTSTR=`echo $CUTOFF | $AWK '{printf("%04d\n", $0)}'`
+
+#METRICS="nERR@$CUTSTR MSnDCG@$CUTSTR"
+METRICS="ERR@$CUTSTR nERR@$CUTSTR MSnDCG@$CUTSTR"
+
+OSUF="nevIA"
+RESSUF="res"
+ILABSUF="Ilab"
+
+TEMP=temp.$$
+
+# set your own ntcir_eval path here
+NEVPATH=ntcir_eval
+
+
+cat $1 | while read RUN; do
+
+ OUTF=$RUN.$OUTSTR.$OSUF
+
+ cat $TIDFILE | while read TID; do
+
+  cat $INTPF | $AWK '$1=="'$TID'"{ print $2, $3 } # intents and probs
+  ' | while read INUM PROB; do
+
+   LABFILE=$TID/$TID.$RUN.$OUTSTR.$ILABSUF$INUM
+   IRELFILE=$TID/$TID.${IRELSUF}$INUM
+
+   if [ -f $IRELFILE ]; then # intent has at least one rel doc
+
+    cat $TID/$TID.$RUN.$RESSUF |
+    $NEVPATH glabel -I $IRELFILE -truncate $CUTOFF > $LABFILE
+    echo "created $LABFILE" >&2
+
+    cat $LABFILE |
+    $NEVPATH gcompute -I $IRELFILE -out "$TID $INUM $PROB" $COMPOPT
+
+   fi
+  
+  done > $TEMP
+
+  cat $TEMP;
+  for MET in $METRICS; do
+
+   cat $TEMP | $AWK '
+    $4 == "'$MET'="{ sumprob+= $3; iametric+=$3*$NF}
+    END{ printf( "'$TID' SUMp= %.4f IA-'$MET'= %.4f\n", sumprob, iametric ) }
+   '   
+  
+  done
+
+ done > $OUTF
+
+ echo "created $OUTF" >&2
+
+done
+
+rm $TEMP

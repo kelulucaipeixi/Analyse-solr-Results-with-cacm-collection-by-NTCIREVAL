@@ -1,0 +1,43 @@
+#!/bin/sh
+# compute evaluation metrics for 1CLICK
+# using a nug file and a mat file for each directory
+
+if [ $# -lt 3 ]; then
+    echo "usage: `basename $0` <topicIDfile> <nugsuf> <evaluationname> [runlist]" >&2
+    echo " e.g.: echo TEST0-D-1 | `basename $0` 1C1-formal.nuggets.tid test.nug test" >&2
+    exit 1
+fi
+
+# set your own ntcir_eval path here
+NEVPATH=ntcir_eval
+
+AWK="/usr/bin/env gawk"
+
+#LPARAM=1000 # for computing S-measure
+LPARAM=500 # for computing S-measure
+FBETA=1.0 # for computing F-flat
+
+OSUF="1cl"
+MATSUF="mat"
+
+TIDFILE=$1
+NUGSUF=$2
+OUTSTR=$3
+shift
+shift
+shift
+
+while read RUN; do
+
+ OUTF=$RUN.$OUTSTR.$OSUF
+
+ cat $TIDFILE | while read TID; do
+
+  cat $TID/$TID.$RUN.$MATSUF |
+  $NEVPATH 1click -L $LPARAM -out $TID -N $TID/$TID.$NUGSUF -beta $FBETA
+ 
+ done > $OUTF
+
+ echo "created $OUTF" >&2
+
+done

@@ -1,0 +1,322 @@
+HOW TO USE NTCIREVAL FOR RANKED RETRIEVAL EVALUATION
+       	   	     	 		  Revised Jan 11, 2019
+					  Revised March 12, 2018
+       	   	     	 		  Revised May 7, 2016
+       	   	     	 		  April 2011 Tetsuya Sakai
+
+0. INTRODUCTION
+
+This document explains how to use NTCIREVAL
+for traditional ranked retrieval evaluation, e.g. NTCIR CLIR/IR4QA and
+TREC adhoc tasks.
+
+The usual procedure is as follows:
+
+(1) For each topic (search request),
+create a "rel" (relevance assessments) file, which contains document IDs
+of judged documents with relevance levels.
+You usually need to do this just once.
+Section 1 provides more details.
+
+(2) For each topic,
+use your system to create a "res" (result) file,
+which should be a ranked list of document IDs.
+Section 2 provides more details.
+
+(3) For each topic, use the C program ntcir_eval to compute
+various evaluation metrics based on a rel file and a res file.
+Finally, compute mean performance values over the entire topic set.
+Section 3 provides more details.
+
+
+1. CREATE rel FILES
+
+
+ 1.0. (IF NECESSARY) CONVERT YOUR QRELS TO NTCIR-FORMAT QRELS
+
+To evaluate ranked retrieval using NTCIREVAL,
+you need an NTCIR-format qrels file.
+Each line in an NTCIR-format qrels file 
+consists of three fields:
+<topicID> <documentID> <relevance_level>
+
+where a relevance level can be L0, L1, L2, ...
+(L0 means judged nonrelevant).
+
+Qrels in other formats can easily be converted to the NTCIR-format.
+
+For example, if you have an "early-NTCIR" qrels file,
+in which the second field in each line represents
+a relevance "grade" S, A, B or C,
+you can use a script from NTCIREVAL as follows:
+
+*EXAMPLE*
+
+% cat CLIR6FormalRunRJ-J-Relax.txt | EarlyNTCIRqrels2NTCIRqrels > CLIR6FormalRunRJ-J.qrels
+
+NTCIREVAL also provides a similar script for converting a 
+TREC robust graded-relevance qrels into an NTCIR-format qrels file,
+called TRECrobust2NTCIRqrels.
+
+Note that you are responsible for mapping the original 
+relevance grades to the NTCIR relevance levels (L0, L1, L2, ...).
+Please have a look inside these simple conversion scripts.
+
+
+ 1.1. CREATE rel FILES FROM NTCIR-FORMAT QRELS
+
+Now you have an NTCIR-format qrels file.
+[A sample file test.qrels is included in NTCIREVAL.]
+The next step is to create per-topic "rel" (relevant) files.
+Move to a directory for your experiments and use
+the NTCIRsplitqrels script as follows:
+
+*EXAMPLE*
+
+% NTCIRsplitqrels test.qrels rel
+
+This will do three things:
+(1) Create topic directories under the current directory 
+    (if they do not exist already);
+(2) Create a rel file under each topic directory,
+    e.g. ./<topicID>/<topicID>.rel
+(3) Create a file containing a list of topicIDs,
+    e.g. test.qrels.tid
+
+Each line in a rel file is of the form:
+<documentID> <relevance_level>.
+
+NOTE: If you are evaluating a list of strings rather than
+documentIDs, then your qrels file should use ";" or something
+as the separator instead of the default white space.
+In this case, add a third argument to NTCIRsplitqrels:
+
+*EXAMPLE*
+
+% NTCIRsplitqrels test.qrels rel ";"
+
+
+2. CREATE res FILES
+
+To evaluate an IR system,
+you need to create a "res" (system result) file 
+under each topic directory:
+   ./<topicID>/<topicID>.<runname>.res
+
+A res file is simply a ranked list of document IDs
+(in decreasing order of relevance).
+Thus line 1 should contain the document retrieved at rank 1, and so on.
+The res file can also be empty (i.e. no search result).
+NOTE: If there are ties, it is the system's responsiblity to 
+resolve them. The documents must be fully ranked.
+
+Given a list of topics (with topicIDs),
+you can write your own script to
+create a res file under each topic directory.
+
+Alternatively, 
+if you already have a TREC-format or IR4QA-format "run" file,
+you can use a script included in NTCIREVAL
+to break the run file into per-topic res files, as described below.
+
+
+ 2.1 CREATE res FILES FROM A TREC-FORMAT RUN FILE
+
+Suppose you have a TREC-format run file called TRECRUN.
+Each line in TRECRUN should contain the following fields:
+<topicID> <dummy> <documentID> <rank> <docscore> <runname>.
+[A sample TRECRUN file is included in NTCIREVAL.]
+
+Suppose the current directory is your experiment directory,
+where the topic directories and the run file are.
+Then you can use the TRECsplitruns script to break up this file:
+
+*EXAMPLE*
+
+% echo ./TRECRUN | TRECsplitruns ./test.qrels.tid 1000
+
+*EXAMPLE*
+
+% cat ./runl
+TRECRUN
+TRECRUN2
+% cat ./runl | TRECsplitruns ./test.qrels.tid 1000
+
+The first example should create a res file for each topicID
+listed in the tid file.
+e.g. ./<topicID>/<topicID>.TRECRUN.res
+The second argument "1000" means that top 1000 docs
+are kept in the res file (even if the run file contains more documents per topic).
+
+NOTE: the script TRECsplitruns ignores
+the <dummy>, <rank>, <docscore> and <runname>
+fields in the TREC-format run file.
+It simply extracts a list of documentIDs for each topic
+without modifying the original document ranking.
+
+NOTE2: If you are evaluating a list of strings rather than
+documentIDs, then your run file should use ";" or something
+as the separator instead of the default white space: e.g.
+<topicID>;<dummy>;<documentID>;<rank>;<docscore>;<runname>.
+In this case, use TRECsplitruns with the -s option, as follows:
+
+*EXAMPLE*
+% cat ./runl | TRECsplitruns ./test.qrels.tid -s ";"
+
+
+ 2.2 CREATE res FILES FROM AN IR4QA-FORMAT RUN FILE
+
+Suppose you have an IR4QA-format run file called MSRA-EN-JA-T-01,
+which corresponds to a topicID file called ACLIA1-JA.qrels.tid.
+(An IR4QA-format run file is an XML file:
+See Figure 4 in
+Sakai et al.: Overview of the NTCIR-7 ACLIA IR4QA Task, NTCIR-7 Proceedings)
+
+Suppose the current directory is your experiment directory,
+where the topic directories and the run file are. Then type:
+
+*EXAMPLE*
+
+% echo ./MSRA-EN-JA-T-01 | IR4QAsplitruns ./ACLIA1-JA.qrels.tid
+
+This should create a res file for each topicID listed in the tid file.
+e.g. ./<topicID>/<topicID>.MSRA-EN-JA-T-01.res
+
+
+3. EVALUATE
+
+
+ 3.1 COMPUTE PER-TOPIC VALUES USING NTCIR-eval
+
+Now you have a rel file and a res file in each topic directory.
+Time to compute evaluation metrics!
+For this you first use a script called NTCIR-eval, which
+calls a C program called ntcir_eval.
+Please edit this path in the script if necessary:
+NEVPATH=ntcir_eval
+
+Suppose you have a test collections with relevance levels L0-L2
+(judged nonrelevant, relevant and highly relevant),
+and that you want to evaluate a run called TRECRUN
+and to compute nDCG (or other document-cutoff-based
+metrics) at 10 and at 1000. Then use NTCIR-eval as follows:
+
+*EXAMPLE*
+% echo TRECRUN | NTCIR-eval test.qrels.tid rel test -cutoffs 10,1000 -g 1:2
+created 0001/0001.TRECRUN.test.lab
+created 0002/0002.TRECRUN.test.lab
+created 0003/0003.TRECRUN.test.lab
+created TRECRUN.test.nev
+
+*EXAMPLE*
+% cat runl | NTCIR-eval test.qrels.tid rel test -cutoffs 10,1000 -g 1:2
+created 0001/0001.TRECRUN.test.lab
+created 0002/0002.TRECRUN.test.lab
+created 0003/0003.TRECRUN.test.lab
+created TRECRUN.test.nev
+created 0001/0001.TRECRUN2.test.lab
+created 0002/0002.TRECRUN2.test.lab
+created 0003/0003.TRECRUN2.test.lab
+created TRECRUN2.test.nev
+
+where
+Arg 1: list of topicIDs;
+Arg 2: suffix of the rel files 
+       based on which evaluation metrics are to be computed;
+Arg 3: arbitrary string that typically represents
+       a particular parameter setting for NTCIR-eval
+       (e.g. which rel files and what options are used);
+The rest of the arguments are options handed down to 
+the C program ntcir_eval:
+
+"-cutoffs 10,1000" means document-cutoff-based metrics such as 
+	  precision and nDCG are computed at ranks 10 and 1000; and
+"-g 1:2" means that the test collection has L1- and L2-relevant documents,
+    and that a gain value of 1 should be given to each L1-relevant document
+    and a gain value of 2 should be given to each L2-relevant document.
+    If you have L1-L3 relevant documents, use "-g 1:2:3", "-g 1:10:100" etc.
+
+The -g options is required in order to declare
+the maximum relevance level for the test collection
+as well as the gain values.
+
+Whereas, the cutoff option is optional: the default is 1000.
+You can also set any number of cutoffs, e.g. "-cutoffs 10" "-cutoffs 1,10,100"
+
+
+If TRECRUN is evaluated using NTCIR-eval as mentioned above,
+NTCIR-eval will do two things:
+
+(1) create "lab" (label) files
+e.g. ./<topicID>/<topicID>.TRECRUN.test.lab
+which are the same as the res files but 
+with relevance levels indicated with each documentID.
+This is useful for per topic analysis (e.g. manually looking at 
+how good the search results actually are).
+It is okay to remove these files if you do not need them.
+
+(2) create a "nev" (ntcir_eval) file, e.g. TRECRUN.test.nev.
+This file contains the performance values for each topic,
+along with some additional information.
+See Section 3 of README for more details.
+
+
+NOTE: If the rel files use a separator that is not the default white 
+space e.g. ";", you can use a similar script called NTCIR-eval-sep
+instead, and specify the separator as the *fourth* argument as follows:
+
+*EXAMPLE*
+% echo TRECRUN | NTCIR-eval-sep test.qrels.tid rel test ";" -cutoffs 10,1000 -g 1:2
+
+
+
+ 3.2 CREATE TOPIC-BY-RUN MATRICES AND/OR COMPUTE MEAN SCORES [OPTIONAL]
+
+Now that you have a nev file,
+you can easily create topic-by-run matrices and/or
+compute the mean performance over your topic set
+for the metric of your choice.
+
+Creating a topic-by-run matrix for the measure of your choice:
+
+*EXAMPLE*
+% Topicsys-matrix test.qrels.tid runl test.nev MSnDCG@0010 > nDCG@10.tsmatrix
+
+where
+Arg 1: list of topicIDs;
+Arg 2: list of run names;
+Arg 3: suffix of the nev files;
+Arg 4: one of the eval measures in the nev files.
+
+Computing mean scores for each run:
+
+*EXAMPLE*
+
+% NEV2mean runl test.qrels.tid test.nev AP Q-measure MSnDCG@1000
+created runl.test.qrels.test.nev.AP
+created runl.test.qrels.test.nev.Q-measure
+created runl.test.qrels.test.nev.MSnDCG@1000
+
+where
+Arg 1: list of run names;
+Arg 2: list of topicIDs;
+Arg 3: suffix of the nev files
+       based on which the mean values are to be computed;
+The rest of the arguments should be the evaluation metrics of your choice
+that actually appear in the nev files.
+Make sure you type them correctly.
+[See Section 3 of README for more details.]
+
+NEV2mean will then create a file for each metric,
+in which all the runs in runl are listed up 
+with their mean performance values:
+
+*EXAMPLE*
+
+% cat runl.test.qrels.test.nev.MSnDCG@1000
+TRECRUN 0.4142
+TRECRUN2 0.4142
+
+In this example, the mean Microsoft-version nDCG@1000
+(over three topics) for TRECRUN is 0.4142,
+and that for TRECRUN2 is also 0.4142.

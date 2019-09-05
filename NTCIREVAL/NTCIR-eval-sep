@@ -1,0 +1,61 @@
+#!/bin/sh
+# compute evaluation metrics 
+# using a rel file and a res file for each directory
+# same as NTCIR-eval but a separator must be specified
+
+if [ $# -lt 6 ]; then
+    echo "usage: `basename $0` <topicIDfile> <relsuf> <evaluationname> <separator> <options> [runlist]" >&2
+    echo " e.g.: echo TRECRUN | `basename $0` test.qrels.tid rel test \";\" -cutoffs 10,1000 -g 1:2" >&2
+    exit 1
+fi
+
+# about <options>:
+# For NTCIR CLIR with L0-L3 docs, try e.g. -cutoffs 10,1000 -g 1:2:3
+# For IR4QA with L0-L2 docs, try e.g. -cutoffs 10,1000 -g 1:2
+# For NTCIR-8 CQA with L0-L8 docs, try e.g. -cutoffs 1,20 -g 1:2:3:4:5:6:7:8
+# The cutoffs options is optional (default cutoff is 1000)
+# but the g option is required for specifying the 
+# number of relevance levels and the gain values.
+
+# set your own ntcir_eval path here
+NEVPATH=ntcir_eval
+
+AWK="/usr/bin/env gawk"
+
+OSUF="nev"
+RESSUF="res"
+LABSUF="lab"
+
+
+TIDFILE=$1
+RELSUF=$2
+OUTSTR=$3
+SEP=$4
+shift
+shift
+shift
+shift
+
+COMPOPT=$@
+
+
+while read RUN; do
+
+ OUTF=$RUN.$OUTSTR.$OSUF
+
+ cat $TIDFILE | while read TID; do
+
+  LABFILE=$TID/$TID.$RUN.$OUTSTR.$LABSUF
+
+  cat $TID/$TID.$RUN.$RESSUF |
+  $NEVPATH label -r $TID/$TID.$RELSUF -sep "$SEP" > $LABFILE
+  echo "created $LABFILE" >&2
+
+  cat $LABFILE |
+  $NEVPATH compute -r $TID/$TID.$RELSUF $COMPOPT -out $TID -sep "$SEP"
+ 
+ done > $OUTF
+
+ echo "created $OUTF" >&2
+
+done

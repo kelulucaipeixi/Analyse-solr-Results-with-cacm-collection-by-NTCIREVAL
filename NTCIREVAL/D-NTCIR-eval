@@ -1,0 +1,77 @@
+#!/bin/sh
+# compute diversity metrics
+# gamma is the parameter for combining I-rec and D-measures.
+
+if [ $# -lt 4 ]; then
+    echo "usage: `basename $0` <topicIDfile> <relprefix> <doccutoff> <evaluationname> [runlist]" >&2
+    echo " e.g.: echo TRECRUN | `basename $0` Dtest.Iprob.tid test 10 l10" >&2
+    exit 1
+fi
+
+TIDFILE=$1
+RELPREF=$2
+CUTOFF=$3
+OUTSTR=$4
+shift
+shift
+shift
+shift
+
+# for Dsharp
+GAMMA=0.5
+
+# only one cutoff allowed
+COMPOPT="-cutoffs $CUTOFF"
+
+AWK="/usr/bin/env gawk"
+CUTSTR=`echo $CUTOFF | $AWK '{printf("%04d\n", $0)}'`
+
+GRELSUF="Grelv"
+IRELSUF="Irelv"
+RESSUF="res"
+LABSUF="glab"
+OSUF="Dnev"
+
+TEMP=temp.$$
+
+
+# set your own ntcir_eval path here
+NEVPATH=ntcir_eval
+
+cat $1 | while read RUN; do
+
+ OUTF=$RUN.$OUTSTR.$OSUF
+
+ cat $TIDFILE | while read TID; do
+
+  LABFILE=$TID/$TID.$RUN.$OUTSTR.$LABSUF
+
+  cat $TID/$TID.$RUN.$RESSUF |
+  $NEVPATH glabel -I $TID/$TID.${RELPREF}.$GRELSUF -truncate $CUTOFF > $LABFILE
+  echo "created $LABFILE" >&2
+
+  ( cat $LABFILE |
+  $NEVPATH gcompute -I $TID/$TID.${RELPREF}.$GRELSUF -out $TID $COMPOPT;
+  $NEVPATH irec $COMPOPT -out $TID $TID/$TID.$RUN.$RESSUF $TID/$TID.${RELPREF}.${IRELSUF}[0-9]* ) > $TEMP
+ 
+  IREC=`cat $TEMP | $AWK '/ I-rec@'$CUTSTR'=/{print $NF; next}'`
+  DIVQ=`cat $TEMP | $AWK '/ Q@'$CUTSTR'=/{print $NF; next}'`
+  DIVN=`cat $TEMP | $AWK '/ MSnDCG@'$CUTSTR'=/{print $NF; next}'`
+
+  cat $TEMP;
+  echo $IREC $DIVQ $DIVN | $AWK '
+ {
+   printf( "'$TID' D#-Q@'$CUTSTR'=           %.4f\n",
+  '$GAMMA'*$1+(1-'$GAMMA')*$2 );
+   printf( "'$TID' D#-nDCG@'$CUTSTR'=        %.4f\n",
+  '$GAMMA'*$1+(1-'$GAMMA')*$3 );
+ }
+'
+
+ done > $OUTF
+
+ echo "created $OUTF" >&2
+
+done
+
+#rm $TEMP

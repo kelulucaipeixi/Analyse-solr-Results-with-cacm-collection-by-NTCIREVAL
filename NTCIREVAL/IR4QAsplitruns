@@ -1,0 +1,57 @@
+#!/bin/sh
+# break an IR4QA-format run file into per-topic res files
+# truncate if there are more than DOCLIMIT docs
+
+# makes empty files even if the runfile is empty for some topics
+
+if [ $# -lt 1 ]; then
+    echo "usage: `basename $0` <topicIDlist> [runpathlist]" >&2
+    echo " e.g.: echo ./MSRA-EN-JA-T-01 | `basename $0` ACLIA1-JA.qrels.tid" >&2
+    echo " e.g.: echo ./MSRA-EN-JA-T-01.xml | `basename $0` ACLIA1-JA.qrels.tid" >&2
+    exit 1
+fi
+
+AWK="/usr/bin/env gawk"
+
+SUF="res"
+DOCLIMIT=1000
+# truncate if ranked list is too long
+
+TIDLIST=$1
+shift
+
+
+cat $1 | while read RUNPATH; do
+
+ RUN=`echo $RUNPATH | sed 's/^.*\///; s/.xml//'`
+
+ cat $TIDLIST | while read TID; do
+
+  mkdir -p $TID
+  OUTF=$TID/$TID.$RUN.$SUF
+
+  cat $RUNPATH | $AWK 'BEGIN{count=0}
+/<TOPIC ID="'$TID'">/{ sw = 1; next }
+sw==1{
+
+ if( match( $0, /<\/TOPIC>/ ) ){ exit }
+
+ if( match( $0, / 'DOCID='/ ) ){
+
+  sub( /^.* DOCID="/, "", $0 );
+  sub( /" .*$/, "", $0 );
+  print
+  count++;
+  if( count >= '$DOCLIMIT' ){ exit }
+ 
+ }
+
+}
+' > $OUTF
+
+
+  echo "created $OUTF" >&2
+ 
+ done 
+
+done

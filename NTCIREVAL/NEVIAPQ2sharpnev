@@ -1,0 +1,55 @@
+#!/bin/sh
+# Using IA/PQnev and Dnev files,
+# compute IA# metrics or P+Q# (combine P+Q with I-rec)
+
+if [ $# -lt 6 ]; then
+    echo "usage: `basename $0` <topicIDfile> <Dnev suffix> <I-recmetric> <IA/PQnev suffix> <rawIA/PQmetric> <#metric> [runlist]" >&2
+    echo " e.g.: echo TRECRUN | `basename $0` Dtest.Iprob.tid dUl10.Dnev I-rec@0010 Ul10.PQnev P+Q@0010 P+Q#@0010" >&2
+    exit 1
+fi
+
+TIDFILE=$1
+DSUF=$2
+DMETRIC=$3
+IASUF=$4
+IAMETRIC=$5
+OUTMETRIC=$6
+shift
+shift
+shift
+shift
+shift
+shift
+
+GAMMA=0.5 
+
+T=$HOME/bin
+AWK="/usr/bin/env gawk"
+CUTSTR=`echo $CUTOFF | $AWK '{printf("%04d\n", $0)}'`
+
+OSUF="nev"
+
+TEMP=temp.$$
+
+
+cat $1 | while read RUN; do
+
+ OUTF="$RUN.$OUTMETRIC.$OSUF"
+
+ cat $TIDFILE | while read TID; do
+
+  DVAL=`cat $RUN.$DSUF | grep "^$TID ${DMETRIC}=" | $AWK '{print $NF}'`
+
+  IAVAL=`cat $RUN.$IASUF | egrep "^$TID SUMp= .* ${IAMETRIC}=" | $AWK '{print $NF}'`
+
+  echo $TID $DVAL $IAVAL
+
+ done | $AWK '{
+ printf( "%s '$IAMETRIC'=\t%.4f\n", # raw IA/PQ metric
+ $1, $3 );
+ printf( "%s '$OUTMETRIC'=\t%.4f\n",# sharpened metric
+ $1, '$GAMMA'*$2+(1-'$GAMMA')*$3 ) }' > $OUTF
+
+ echo "created $OUTF" >&2
+
+done

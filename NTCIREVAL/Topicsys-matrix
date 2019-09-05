@@ -1,0 +1,38 @@
+#!/bin/sh
+# form a n * m matrix (n:topics m:systems),
+# for randomization test
+# 2016/01/26 If a run does not return a result for a topic,
+# the score for that topic is set to ZERO.
+
+if [ $# -lt 4 ]; then
+    echo "usage: `basename $0` <tidlist> <syslist> <nevsuffix> <metric>">&2
+    echo "usage: `basename $0` test.qrels.tid runlist test.nev MSnDCG@0010">&2
+    echo "usage: `basename $0` Dtest.Iprob.tid runlist test.Dnev D#-nDCG@0010">&2
+    exit 1
+fi
+
+AWK=/usr/bin/gawk
+
+TIDL=$1
+SYSL=$2
+NEVSUF=$3
+METRIC=$4
+shift
+shift
+shift
+shift
+
+cat $TIDL | while read TID; do
+
+ cat $SYSL | while read SYS; do
+
+  grep "^$TID ${METRIC}=" $SYS.$NEVSUF | $AWK 'BEGIN{val=0}
+{ val = $NF; exit} # the match should occur at most once
+END{printf( "%.4f ", val)}'
+
+ done
+
+ echo
+
+
+done | sed 's/ $//'

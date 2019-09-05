@@ -1,0 +1,795 @@
+HOW TO USE NTCIREVAL FOR DIVERSIFIED RETRIEVAL EVALUATION
+       	   	     	 	     	        Revised Jan 11, 2019 
+						Revised March 12, 2018
+						Revised May 7, 2016
+                                               	April 2012 Tetsuya Sakai
+
+0. INTRODUCTION
+
+This document explains how to use NTCIREVAL
+for type-agnostic and type-sensitive diversity evaluation.
+
+Type-agnostic: informational/navigational intent labels are not used.
+	       Metrics: I-rec, D-nDCG, IA metrics etc. [10][11]
+
+Type-sensitive: informational/navigational intent labels are used.
+		Metrics: DIN-nDCG, P+Q etc. [13]
+
+PREMISES: 
+- Each topic q has multiple intents i, each with probability P(i|q);
+- graded relevance assessments are available for each intent;
+- Each intent is labelled as either informational or navigational
+(for type-sensitive metrics only).
+
+
+The usual procedure is as follows:
+
+(1) For each topic with intents i and probabilities P(i|q)
+(and intent type labels),
+create per-intent relv (Irelv) files that
+represent ideal ranked lists containing relevant documents
+with gain values for each intent,
+and a global relv (Grelv) file
+that represents an ideal ranked list containing relevant documents
+with global gain values as defined in [10].
+The Irelv files are used for computing I-recall (aka subtopic recall),
+IA metrics etc.
+The Grelv file is used for computing D-measures etc.
+Also, a "din" file is created for use in type-sensitive evaluation.
+Section 1 provides more details.
+
+(2) For each topic,
+use your system to create a "res" (system result) file,
+which should be a ranked list of document IDs.
+Section 2 provides more details.
+
+(3) For each topic, use ntcir_eval to compute
+various evaluation metrics based on Irelv files, a Grelv file and a res file.
+Finally, compute mean performance values over the entire topic set.
+Section 3 provides more details.
+
+
+1. CREATE Irelv and Grelv (and din) FILES
+
+ 1.0. THE FILES YOU NEED AS INPUT: DINprob (or Iprob) and Dqrels FILES
+
+To conduct type-agnostic diversity evaluation using NTCIREVAL,
+you need to start with an intent probability (DINprob or Iprob) file
+and a diversity qrels (Dqrels) file.
+
+A DINprob file is of the following format:
+<topicid> <intent_number> <prob> <inf/nav>
+ :
+
+*EXAMPLE*
+
+% cat Dtest.DINprob
+0001 1 0.5714 nav
+0001 2 0.2857 nav
+0001 3 0.1429 inf
+0002 1 0.5333 inf
+0002 2 0.2667 inf
+0002 3 0.1333 nav
+0002 4 0.0667 nav
+0003 1 0.5714 nav
+0003 2 0.2857 nav
+0003 3 0.1429 nav
+[This sample file is included in NTCIREVAL.]
+
+Whereas, an Iprob file is of the following format:
+<topicid> <intent_number> <prob>
+ :
+
+*EXAMPLE*
+
+% cat Dtest.Iprob
+0001 1 0.5714
+0001 2 0.2857
+0001 3 0.1429
+0002 1 0.5333
+0002 2 0.2667
+0002 3 0.1333
+0002 4 0.0667
+0003 1 0.5714
+0003 2 0.2857
+0003 3 0.1429
+[This sample file is included in NTCIREVAL.]
+
+This there is no intent type label.
+In this case, every intent is regarded as informational.
+
+Ideally, every intent should have at least one relevant document
+in the Dqrels file discussed below.
+Also, make sure that the sum of intent probabilities
+does not exceed 1 for each topic.
+(Note that, if a topic has at least one intent 
+without a known relevant document,
+or if the intent probabilities do not add up to 1,
+the maximum possible value of diversity metrics will be less than 1.)
+
+
+A Dqrels file is of the following format:
+<topicid> <intent_number> <docno> <rel level>
+ :
+
+*EXAMPLE*
+
+% head -10 Dtest.Dqrels 
+0001 0 clueweb09-en0000-15-04138 L0
+0001 0 clueweb09-en0000-68-26676 L0
+0001 0 clueweb09-en0000-77-05562 L0
+0001 0 clueweb09-en0000-81-00280 L0
+0001 0 clueweb09-en0000-84-20406 L0
+0001 0 clueweb09-en0001-02-21240 L0
+0001 2 clueweb09-en0001-02-21241 L1
+0001 3 clueweb09-en0001-02-21241 L1
+0001 0 clueweb09-en0001-02-21397 L0
+0001 0 clueweb09-en0001-02-21652 L0
+[This sample file is included in NTCIREVAL.]
+
+In the above example,
+the document "clueweb09-en0001-02-21241"
+is L1-relevant to intents 2 and 3.
+Note that for each judged nonrelevant (L0) document,
+the second field is set to zero
+(meaning: not relevant to any of the intents).
+
+
+ 1.1 CREATE Irelv, Grelv and din FILES USING DIN-splitqrels
+
+Using a DINprob (or Iprob) file and a Dqrels file,
+you can create, for each topic,
+- Irelv files (an ideal ranked list for each intent) 
+- a Grelv file (an ideal ranked list based on the global gain [10])
+- a din file (an intermediate file for computing DIN-measures [13]).
+If you are not computing DIN-measures then you can remove the din files.
+
+*EXAMPLE*
+
+% DIN-splitqrels Dtest.DINprob Dtest.Dqrels test
+
+This will do five things:
+(1) Create topic directories under current directory
+    (if they do not exist already);
+(2) Create an Irelv file for each intent for each topic, of the form:
+    ./<topicID>/<topicID>.test.Irelv<intent_number>
+    This represents an ideal ranked list for this particular intent.
+(3) Create a din file of the form:
+    ./<topicID>/<topicID>.test.din
+    This is used for computing the numerator of DIN-nDCG etc [13].
+(4) Create a Grelv file for each topic, of the form:
+    ./<topicID>/<topicID>.test.Grelv
+    This represents an ideal ranked list based on the global gain [10].
+(5) Create a file containing a list of topicIDs,
+    e.g. Dtest.DINprob.tid
+
+Both Irelv and Grelv files are in the "relv" format:
+<documentID> <gain value>
+ :
+and the lines are sorted in decreasing order of gain values.
+Irelv files are used for computing Intent-Aware metrics [1] and/or I-rec [10].
+Grelv files are used for computing the D-measures [10].
+    
+NOTE:
+DIN-splitqrels can only handle
+per-intent relevance levels of up to L9.
+If you want to use more per-intent relevance levels (not likely!),
+you need to edit DIN-splitqrels: add some lines immediately below
+where it says:
+L9G=9
+Note that the script maps relevance levels into gain values.
+You can edit these lines within DIN-splitqrels if necessary.
+
+NOTE2:
+If you are evaluating ranked list of strings rather than document IDs,
+then your Iprob and Dqrels files should use ";" or something
+as the separator instead of the default white space.
+In such a case, DIN-splitqrels can be used with a fourth argument
+for specifying the non-space separator:
+
+*EXAMPLE*
+
+% DIN-splitqrels Dtest.DINprob Dtest.Dqrels test ";"
+
+
+2. CREATE res FILES
+
+To evaluate an IR system,
+you need to create a "res" (search result) file 
+under each topic directory:
+   ./<topicID>/<topicID>.<runname>.res
+
+A res file is simply a ranked list of document IDs
+(in decreasing order of relevance).
+Thus line 1 should contain the document retrieved at rank 1, and so on.
+The res file can also be empty (i.e. no search result).
+NOTE: If there are ties, it is the system's responsiblity to 
+resolve them. The documents must be fully ranked.
+
+Given a list of topics (with topicIDs),
+you can write your own script to
+create a res file under each topic directory.
+
+Alternatively,
+suppose you already have a TREC-format "run" file,
+which contain the following fields:
+<topicID> <dummy> <documentID> <rank> <docscore> <runname>.
+[A sample TRECRUN file is included in NTCIREVAL.]
+
+Suppose the current directory is your experiment directory,
+where the topic directories and the run file are.
+Then you can use the TRECsplitruns script to break up this file:
+
+*EXAMPLE*
+
+% echo ./TRECRUN | TRECsplitruns ./Dtest.DINprob.tid 1000
+
+*EXAMPLE*
+
+% cat ./runl
+TRECRUN
+TRECRUN2
+% cat ./runl | TRECsplitruns ./Dtest.DINprob.tid 1000
+
+The first example should create a res file for each topicID
+listed in the tid file.
+e.g. ./<topicID>/<topicID>.TRECRUN.res
+The second argument "1000" means that top 1000 docs
+are kept in the res file (even if the run file contains more documents per topic).
+
+NOTE: the script TRECsplitruns ignores
+the <dummy>, <rank>, <docscore> and <runname>
+fields in the TREC-format run file.
+It simply extracts a list of documentIDs for each topic
+without modifying the original document ranking.
+
+NOTE2: If you are evaluating a list of strings rather than
+documentIDs, then your run file should use ";" or something
+as the separator instead of the default white space: e.g.
+<topicID>;<dummy>;<documentID>;<rank>;<docscore>;<runname>.
+In this case, use TRECsplitruns with the -s option, as follows:
+
+*EXAMPLE*
+% cat ./runl | TRECsplitruns ./Dtest.DINprob.tid 1000 -s ";"
+
+
+3. EVALUATE 
+
+
+ 3.1 COMPUTE PER-TOPIC VALUES USING D-NTCIR-eval
+     FOR TYPE-AGNOSTIC EVALUATION
+
+You need to create Irelv and Grelv files before taking this step.
+See Section 2.
+
+For computing type-agnostic metrics, 
+you first use a script called D-NTCIR-eval, which
+calls a C program called ntcir_eval.
+Please edit this path in the script if necessary:
+NEVPATH=ntcir_eval
+
+Suppose you want to evaluate the aforementioned TRECRUN
+using D-measures [10] at document cutoff 10.
+Then D-NTCIR-eval can be used as follows:
+
+*EXAMPLE*
+
+% echo TRECRUN | D-NTCIR-eval Dtest.DINprob.tid test 10 l10
+
+*EXAMPLE*
+
+% cat ./runl | D-NTCIR-eval Dtest.DINprob.tid test 10 l10
+
+where
+Arg 1: list of topic IDs.
+Arg 2: prefix for the Irelv and Grelv files; in the 
+       above example, the script will look for files *.testGrelv etc.
+Arg 3: document cutoff (e.g. 10).
+Arg 4: arbitrary string used to represent a particular
+       experimental condition ("<evalname>").
+
+D-NTCIR-eval does two things:
+(1) create "glab" files
+./<topicID>/<topicID>.<runname>.<evalname>.glab
+which are the same as the res files but 
+with gain values indicated with each documentID.
+This is useful for per topic analysis (e.g. manually looking at 
+how good the search results actually are).
+It is okay to remove these files if you do not need them.
+
+(2) create a file called <runname>.<evalname>.Dnev
+that contains various per-topic evaluation metric values.
+In the Dnev file,
+I-rec, D-Q, D-nDCG, D#-Q and D#-nDCG [10] are printed as 
+I-rec, Q, MSnDCG, D#-Q and D#-nDCG, respectively.
+
+A Dnev file may look like this:
+
+0001 # syslen=10 jrel=93 jnonrel=0
+0001 # r1=3 rp=3
+0001 RR=                  0.3333
+0001 O-measure=           0.2941
+0001 P-measure=           0.2941
+0001 P-plus=              0.2941
+0001 AP=                  0.0154
+0001 Q-measure=           0.0136
+0001 NCUrb,P=             0.0681
+0001 NCUrb,BR=            0.0600
+0001 RBP=                 0.0687
+0001 ERR=                 0.1458
+0001 EBR=                 0.2114
+0001 AP@0010=             0.1433
+0001 Q@0010=              0.1263
+0001 nDCG@0010=           0.2117
+0001 MSnDCG@0010=         0.2085
+0001 P@0010=              0.3000
+0001 RBP@0010=            0.0687
+0001 ERR@0010=            0.1458
+0001 nERR@0010=           0.2402
+0001 EBR@0010=            0.2114
+0001 Hit@0010=            1.0000
+0001 #intent_num=3
+0001 I-rec@n=             0.6667
+0001 I-rec@0010=          0.6667
+0001 D#-Q@0010=           0.3965
+0001 D#-nDCG@0010=        0.4376
+0002 # syslen=10 jrel=10 jnonrel=
+ :
+
+Each line begins with a topicID, and is usually
+followed by a metric name and a metric value. 
+Section 4 will provide more details.
+
+Note that the metrics shown above (such as AP and MSnDCG)
+are NOT the standard average precision and nDCG - 
+they are the D-measure versions for diversity evaluation as defined in [10].
+For computing *standard* adhoc evaluation metrics such as AP and nDCG,
+please refer to README.adhoc.
+
+
+NOTE: If the Irelv and Grelv files use a separator
+that is not the default white space e.g. ";",
+you can use a similar script called D-NTCIR-eval-sep
+instead, and specify the separator as the *fifth* argument follows:
+
+*EXAMPLE*
+% echo TRECRUN | D-NTCIR-eval-sep Dtest.Iprob.tid test 10 l10 ";"
+
+
+ 3.2 COMPUTE PER-TOPIC VALUES USING DIN-NTCIR-eval
+     FOR TYPE-SENSITIVE EVALUATION
+
+You need to create Irelv, Grelv and din files before taking this step.
+See Section 2.
+
+For computing type-sensitive metrics,
+you first use a script called DIN-NTCIR-eval, which
+calls a C program called ntcir_eval.
+Please edit this path in the script if necessary:
+NEVPATH=ntcir_eval
+
+Suppose you want to evaluate the aforementioned TRECRUN
+using DIN-measures [13] at document cutoff 10.
+Then DIN-NTCIR-eval can be used as follows:
+
+*EXAMPLE*
+
+% echo TRECRUN | DIN-NTCIR-eval Dtest.DINprob.tid test 10 l10
+
+*EXAMPLE*
+
+% cat ./runl | DIN-NTCIR-eval Dtest.DINprob.tid test 10 l10
+
+where
+Arg 1: list of topic IDs.
+Arg 2: prefix for the Irelv and Grelv files; in the 
+       above example, the script will look for files *.testGrelv etc.
+Arg 3: document cutoff (e.g. 10).
+Arg 4: arbitrary string used to represent a particular
+       experimental condition ("<evalname>").
+
+DIN-NTCIR-eval does two things:
+(1) create "dinlab" files
+./<topicID>/<topicID>.<runname>.<evalname>.dinlab
+which are the same as the res files but 
+with gain values indicated with each documentID.
+This is useful for per topic analysis (e.g. manually looking at 
+how good the search results actually are).
+It is okay to remove these files if you do not need them.
+
+(2) create a file called <runname>.<evalname>.DINnev
+that contains various per-topic evaluation metric values.
+In the DINnev file,
+I-rec, DIN-Q, DIN-nDCG, DIN#-Q and DIN#-nDCG [10] are printed as 
+I-rec, Q, MSnDCG, DIN#-Q and DIN#-nDCG, respectively.
+
+A DINnev file may look like this:
+
+0001 # syslen=10 jrel=93 jnonrel=0
+0001 # r1=3 rp=3
+0001 RR=                  0.3333
+0001 O-measure=           0.2941
+0001 P-measure=           0.2941
+0001 P-plus=              0.2941
+0001 AP=                  0.0079
+0001 Q-measure=           0.0067
+0001 NCUrb,P=             0.0360
+0001 NCUrb,BR=            0.0308
+0001 RBP=                 0.0352
+0001 ERR=                 0.0958
+0001 EBR=                 0.0944
+0001 AP@0010=             0.0733
+0001 Q@0010=              0.0627
+0001 nDCG@0010=           0.1176
+0001 MSnDCG@0010=         0.1117
+0001 P@0010=              0.2000
+0001 RBP@0010=            0.0352
+0001 ERR@0010=            0.0958
+0001 nERR@0010=           0.1578
+0001 EBR@0010=            0.0944
+0001 Hit@0010=            1.0000
+0001 #intent_num=3
+0001 I-rec@n=             0.6667
+0001 I-rec@0010=          0.6667
+0001 DIN#-Q@0010=         0.3647
+0001 DIN#-nDCG@0010=      0.3892
+0002 # syslen=10 jrel=10 jnonrel=0
+ :
+
+Each line begins with a topicID, and is usually
+followed by a metric name and a metric value. 
+
+Note that the metrics shown above (such as AP and MSnDCG)
+are NOT the standard average precision and nDCG - 
+they are the DIN-measure versions for diversity evaluation as defined in [13].
+
+
+NOTE: If the Irelv and Grelv files use a separator
+that is not the default white space e.g. ";",
+you can use a similar script called DIN-NTCIR-eval-sep
+instead, and specify the separator as the *fifth* argument follows:
+
+*EXAMPLE*
+% echo TRECRUN | DIN-NTCIR-eval-sep Dtest.Iprob.tid test 10 l10 ";"
+ 
+
+ 3.3 CREATE TOPIC-BY-RUN MATRICES AND/OR  COMPUTE MEAN SCORES [OPTIONAL]
+
+Now that you have a DINnev or Dnev file,
+you can easily create topic-by-run matrices (using Topicsys-matrix)
+and/orcompute the mean performance over your topic set (using NEV2mean)
+for the metric of your choice.
+
+See Section 3.2 in README.adhoc for more details.
+
+
+4. MORE ABOUT ntcir_eval FOR DIVERSITY EVALUATION
+
+This section discusses 
+the three subcommands of ntcir_eval for diversity evaluation, namely,
+"irec", "glabel", "dinlabel" and "gcompute".
+These subcommands are called from the D-NTCIR-eval / DIN-NTCIR-eval
+scripts.
+
+
+ 4.1 "irec"
+
+This subcommand is for computing I-rec (a.k.a subtopic recall) 
+as defined in [10].
+
+For example, for a topic with three intents (and therefore three
+Irelv files), I-rec at different cutoffs can be computed as follows:
+
+*EXAMPLE*
+
+% ntcir_eval irec -cutoffs 10,1000 0001.TRECRUN.res 0001.test.Irelv1 0001.test.Irelv2 0001.test.Irelv3
+ #intent_num=3
+ I-rec@n=             0.6667
+ I-rec@0010=          0.6667
+ I-rec@1000=          1.0000
+
+Here, I-rec@n is the I-rec at cutoff n, where n is the number of intents
+(3 in the above example). Thus n varies across topics.
+
+
+ 4.2 "glabel"
+
+This subcommand compares a res file (a ranked list of retrieved docIDs)
+with a Grelv file (an ideal ranked list of docIDs with global gains)
+and adds global gain values to relevant docs in the res file.
+
+*EXAMPLE*
+
+% ntcir_eval glabel -I 0001.testGrelv 0001.TRECRUN.res 
+
+*EXAMPLE*
+
+% cat 0001.TRECRUN.res | ntcir_eval glabel -I 0001.testGrelv
+
+"glabel" is similar to the "label" command.
+While "label" command adds *relevance levels* (L0, L1 etc)
+to the res file, "glabel" adds global gain values [10].
+
+ 4.4 "dinlabel"
+
+This subcommand is very similar to glabel but is used for computing DIN-measures [13]. Thus "redundant" relevant documents for navigational intents are ignored.
+To do this, ntcir_eval needs to know whether each relevant document is relevant for an informational intent or for a navigational intent, so takes the din file as input instead of the Grelv file.
+
+*EXAMPLE*
+
+% cat 0001.TRECRUN.res | ntcir_eval dinlabel -din 0001.test.din 
+
+
+ 4.3 "gcompute"
+
+This subcommands computes D-measures [10] or DIN-measures [13]
+by reading a Grelv file and an output from glabel or dinlabel.
+
+*EXAMPLE*
+
+ntcir_eval glabel -I 0001.test.Grelv 0001.TRECRUN.res | ntcir_eval gcompute -I 0001.test.Grelv  -cutoffs 10
+ # syslen=993 jrel=93 jnonrel=0
+ # r1=3 rp=424
+ RR=                  0.3333
+ O-measure=           0.2941
+ P-measure=           0.1287
+ P-plus=              0.1617
+ AP=                  0.0919
+ Q-measure=           0.0989
+ NCUrb,P=             0.2007
+ NCUrb,BR=            0.1929
+ RBP=                 0.1058
+ ERR=                 0.1646
+ EBR=                 0.3130
+ AP@0010=             0.1433
+ Q@0010=              0.1263
+ nDCG@0010=           0.2117
+ MSnDCG@0010=         0.2085
+ P@0010=              0.3000
+ RBP@0010=            0.0687
+ ERR@0010=            0.1458
+ nERR@0010=           0.2402
+ EBR@0010=            0.2114
+ Hit@0010=            1.0000
+
+As was mentioned earlier, all of these metrics 
+are the D-measure versions of standard metrics
+(or DIN-measure versions if dinlabel was used instead of glabel).
+
+Note that the cutoff of 10 applies only to metrics with an @ mark.
+Thus, for example, AP is computed based on the full ranked list.
+
+If you want to truncate the original ranked list before computing
+all evaluation metrics, this can be done using a -truncate option:
+
+*EXAMPLE*
+
+ntcir_eval glabel -I 0001.test.Grelv -truncate 10 0001.TRECRUN.res | ntcir_eval gcompute -I 0001.test.Grelv  -cutoffs 10
+ # syslen=10 jrel=93 jnonrel=0
+ # r1=3 rp=3
+ RR=                  0.3333
+ O-measure=           0.2941
+ P-measure=           0.2941
+ P-plus=              0.2941
+ AP=                  0.0154
+ Q-measure=           0.0136
+ NCUrb,P=             0.0681
+ NCUrb,BR=            0.0600
+ RBP=                 0.0687
+ ERR=                 0.1458
+ EBR=                 0.2114
+ AP@0010=             0.1433
+ Q@0010=              0.1263
+ nDCG@0010=           0.2117
+ MSnDCG@0010=         0.2085
+ P@0010=              0.3000
+ RBP@0010=            0.0687
+ ERR@0010=            0.1458
+ nERR@0010=           0.2402
+ EBR@0010=            0.2114
+ Hit@0010=            1.0000
+
+
+Note that the AP values etc are now much lower. 
+
+
+More general information on ntcir_eval can be found
+in Section 3 of README and in Sakai [11].
+
+
+
+5. EVALUATE USING D-NTCIR-IAeval [OPTIONAL]
+
+Optionally, the Irelv files can also be used
+to compute Intent-Aware (IA) metrics [1].
+An IA metric is computed as follows:
+First, compute a standard evaluation metric FOR EACH INTENT.
+(Note that this means that an ideal ranked list is defined separately
+for every intent.)
+Second, take a weighted average over the different intents
+of the same query, by utilising P(i|q).
+
+To compute IA metrics you first use a script called D-NTCIR-IAeval,
+which also calls ntcir_eval.
+Please edit this path in the script if necessary:
+NEVPATH=ntcir_eval
+
+*EXAMPLE*
+
+% echo TRECRUN | D-NTCIR-IAeval Dtest.DINprob.tid Dtest.Iprob test.Irelv 10 l10
+% cat ./runl | D-NTCIR-IAeval Dtest.DINprob.tid Dtest.Iprob test.Irelv 10 l10
+
+where
+Arg 1: topic ID list;
+Arg 2: intent probability file (Iprob or DINprob);
+Arg 3: Irelv file suffix name;
+Arg 4: document cutoff;
+Arg 5: arbitrary string that 
+       should reflect an experimental condition (evalname).
+
+D-NTCIR-IAeval does two things:
+(1) create "Ilab" files for each intent,
+which are res files with gain values:
+./<topicID>/<topicID>.<runname>.<evalname>.Ilab<intnum>
+
+(2) The nevIA file which contains 
+per-intent metric values and per-topic IA metric values:
+<runname>.<evalname>.nevIA
+
+An nevIA file looks 
+similar to an nev file (created by NTCIR-eval: See Section 3 in README.adhoc),
+Dnev file (created by D-NTCIR-eval: See Section 3.1 in this file), or
+DINnev file (created by DIN-NTCIR-eval: See Section 3.2 in this file)
+but the format is slightly different, because this file contains 
+per-INTENT metric values as well as per-topic metric values.
+
+For example, an nevIA file for Topic 0002 may look like this:
+
+0002 3 0.1333 # syslen=10 jrel=3 jnonrel=0
+0002 3 0.1333 # r1=0 rp=0
+0002 3 0.1333 RR=                  0.0000
+0002 3 0.1333 O-measure=           0.0000
+0002 3 0.1333 P-measure=           0.0000
+0002 3 0.1333 P-plus=              0.0000
+0002 3 0.1333 AP=                  0.0000
+0002 3 0.1333 Q-measure=           0.0000
+0002 3 0.1333 NCUrb,P=             0.0000
+0002 3 0.1333 NCUrb,BR=            0.0000
+0002 3 0.1333 RBP=                 0.0000
+0002 3 0.1333 ERR=                 0.0000
+0002 3 0.1333 EBR=                 0.0000
+0002 3 0.1333 AP@0010=             0.0000
+0002 3 0.1333 Q@0010=              0.0000
+0002 3 0.1333 nDCG@0010=           0.0000
+0002 3 0.1333 MSnDCG@0010=         0.0000
+0002 3 0.1333 P@0010=              0.0000
+0002 3 0.1333 RBP@0010=            0.0000
+0002 3 0.1333 ERR@0010=            0.0000
+0002 3 0.1333 nERR@0010=           0.0000
+0002 3 0.1333 EBR@0010=            0.0000
+0002 3 0.1333 Hit@0010=            0.0000
+0002 4 0.0667 # syslen=10 jrel=7 jnonrel=0
+0002 4 0.0667 # r1=2 rp=2
+0002 4 0.0667 RR=                  0.5000
+0002 4 0.0667 O-measure=           0.5000
+0002 4 0.0667 P-measure=           0.5000
+0002 4 0.0667 P-plus=              0.5000
+0002 4 0.0667 AP=                  0.0714
+0002 4 0.0667 Q-measure=           0.0714
+0002 4 0.0667 NCUrb,P=             0.0829
+0002 4 0.0667 NCUrb,BR=            0.0829
+0002 4 0.0667 RBP=                 0.0475
+0002 4 0.0667 ERR=                 0.2500
+0002 4 0.0667 EBR=                 0.2500
+0002 4 0.0667 AP@0010=             0.0714
+0002 4 0.0667 Q@0010=              0.0714
+0002 4 0.0667 nDCG@0010=           0.2323
+0002 4 0.0667 MSnDCG@0010=         0.1734
+0002 4 0.0667 P@0010=              0.1000
+0002 4 0.0667 RBP@0010=            0.0475
+0002 4 0.0667 ERR@0010=            0.2500
+0002 4 0.0667 nERR@0010=           0.3611
+0002 4 0.0667 EBR@0010=            0.2500
+0002 4 0.0667 Hit@0010=            1.0000
+0002 SUMp= 0.2000 IA-ERR@0010= 0.0167
+0002 SUMp= 0.2000 IA-nERR@0010= 0.0241
+0002 SUMp= 0.2000 IA-MSnDCG@0010= 0.0116
+
+
+The second field in the above lines represent the intent number.
+The last two lines containing "SUMp=" contain the IA metric values
+computed based on the per-intent performances.
+In the above example, "IA-Q@0010" is computed by
+taking a weighted average of "Q@0010" for intents 3 and 4.
+
+Usually, the sum of intent probabilities for a topic
+(defined in the Iprob file) should add up to one.
+Hence you should usually see "SUMp= 1.0000" in an nevIA file.
+However, in the above particular example,
+the probabilities in the intp file do not add up to 1 for topic 0002,
+due to lack of relevant documents for intents 1 and 2.
+You might want to consider excluding topics whose
+intent probabilities do not add up to one from your experiments
+altogether.
+
+If you want other IA metrics, 
+for example, RR (reciprocal rank) and P@0010 (precision at 10),
+you can modify the following line in the script
+
+METRICS="Q@$CUTSTR MSnDCG@$CUTSTR"
+
+as follows:
+
+METRICS="Q@$CUTSTR MSnDCG@$CUTSTR P@$CUTSTR RR"
+
+
+If you want to convert the nevIA files to the standard nev format,
+you can use the IANEV2pseudonev script:
+
+*EXAMPLE*
+
+% NEVIA2nev runl Dtest.DINprob.tid l10.nevIA IA-MSnDCG@0010 IA-nERR@0010
+
+where
+Arg 1: list of run names;
+Arg 2: list of topicIDs;
+Arg 3: suffix of the original nevI files;
+The rest of the arguments should be the evaluation metrics of your choice
+that actually appear in the IAnev files.
+Make sure you type them correctly.
+
+Furthermore, from the resultant nev files, NEV2mean can optionally
+be used to compute mean performances (See Section 3.2 of README.adhoc).
+
+
+6. EVALUATE USING DIN-NTCIR-PQeval [OPTIONAL]
+
+Optionally, the Irelv files can also be to compute P+Q and P+Q# measures [13].
+To compute them, you first use a script called DIN-NTCIR-PQeval,
+which also calls ntcir_eval.
+Please edit this path in the script if necessary:
+NEVPATH=ntcir_eval
+
+*EXAMPLE*
+
+% echo TRECRUN | DIN-NTCIR-PQeval Dtest.DINprob.tid Dtest.DINprob test.Irelv 10 l10
+% cat ./runl | DIN-NTCIR-PQeval Dtest.DINprob.tid Dtest.DINprob test.Irelv 10 l10
+
+where
+Arg 1: topic ID list;
+Arg 2: intent probability/type (DINprob) file;
+Arg 3: Irelv file suffix name;
+Arg 4: document cutoff;
+Arg 5: arbitrary string that 
+       should reflect an experimental condition (evalname).
+
+DIN-NTCIR-PQeval does two things:
+(1) create "PQlab" files for each intent,
+which are res files with gain values:
+./<topicID>/<topicID>.<runname>.<evalname>.PQlab<intnum>
+
+(2) The nevPQ file which contains 
+per-intent metric values and per-topic P+Q values:
+<runname>.<evalname>.nevPQ
+
+
+From the nevPQ files and Dnev (or DINnev) files that contain I-rec
+values (Dnev and DINnev contain the same I-rec values as 
+I-rec is type-agnostic),
+nev files that contain both P+Q and P+Q# values can be obtained using
+the script NEVIAPQ2sharpnev:
+
+*EXAMPLE*
+
+% echo TRECRUN | NEVIAPQ2sharpnev Dtest.DINprob.tid l10.Dnev I-rec@0010 l10.nevPQ PplusQ@0010 PplusQ#@0010
+
+where
+Arg 1: topic ID list;
+Arg 2: Dnev (or DINnev) file suffix (files that contain the I-rec values)
+Arg 3: I-rec metric (as shown in the Dnev/DINnev files)
+Arg 4: nevPQ file suffix
+Arg 5: P+Q metric (as shown in the nevPQ files)
+Arg 6: output metric string (to appear in output file and the output filename)
+
+Furthermore, from the resultant nev files, NEV2mean can optionally
+be used to compute mean performances (See Section 3.2 of README.adhoc).

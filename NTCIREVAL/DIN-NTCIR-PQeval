@@ -1,0 +1,90 @@
+#!/bin/sh
+# compute P+Q etc
+
+if [ $# -lt 5 ]; then
+    echo "usage: `basename $0` <topicIDfile> <intprobfile> <Irelsuf> <doccutoff> <evaluationname> [runlist]" >&2
+    echo " e.g.: echo TRECRUN | `basename $0` Dtest.DINprob.tid Dtest.DINprob testdin.Irelv 10 l10" >&2
+    exit 1
+fi
+
+TIDFILE=$1
+INTPF=$2
+IRELSUF=$3
+CUTOFF=$4
+OUTSTR=$5
+shift
+shift
+shift
+shift
+shift
+
+# only one cutoff allowed
+COMPOPT="-cutoffs $CUTOFF"
+
+AWK="/usr/bin/env gawk"
+CUTSTR=`echo $CUTOFF | $AWK '{printf("%04d\n", $0)}'`
+
+#METRICS="Q@$CUTSTR MSnDCG@$CUTSTR"
+
+IMETRIC="Q@$CUTSTR"
+NMETRIC="P-plus"
+OMETRIC="PplusQ@$CUTSTR" # a plus sign will cause a regex matching problem 
+
+OSUF="nevPQ"
+RESSUF="res"
+ILABSUF="PQlab"
+
+TEMP=temp.$$
+
+# set your own ntcir_eval path here
+NEVPATH=ntcir_eval
+
+
+cat $1 | while read RUN; do
+
+ OUTF=$RUN.$OUTSTR.$OSUF
+
+ cat $TIDFILE | while read TID; do
+
+  cat $INTPF | $AWK '$1=="'$TID'"{
+  if( NF == 3 ){ print $2, $3, "inf"; next }
+  if( NF == 4 ){ print $2, $3, $4; next }
+  print "#error in '$INTPF':", $0; exit } # intents, probs, infnav
+  ' | while read INUM PROB INFNAV; do
+
+   LABFILE=$TID/$TID.$RUN.$OUTSTR.$ILABSUF$INUM
+   IRELFILE=$TID/$TID.${IRELSUF}$INUM
+
+   if [ -f $IRELFILE ]; then # intent has at least one rel doc
+
+    cat $TID/$TID.$RUN.$RESSUF |
+    $NEVPATH glabel -I $IRELFILE -truncate $CUTOFF > $LABFILE
+    echo "created $LABFILE" >&2
+
+    cat $LABFILE |
+    $NEVPATH gcompute -I $IRELFILE -out "$TID $INUM $INFNAV $PROB" $COMPOPT
+
+   fi
+  
+  done > $TEMP #<tid> <intnum> <infnav> <prob> <gcompute outline>
+
+  cat $TEMP;
+
+  cat $TEMP | $AWK '
+   $3=="inf" && $5=="'$IMETRIC'=" || $3=="nav" && $5=="'$NMETRIC'="{
+    sumprob += $4; metric += $4*$NF
+   }
+   END{
+    printf( "'$TID' SUMp= %.4f '$OMETRIC'= %.4f\n",
+    sumprob, metric );
+   }
+  ';
+  
+ done > $OUTF
+
+ echo "created $OUTF" >&2
+
+done
+
+rm $TEMP
+

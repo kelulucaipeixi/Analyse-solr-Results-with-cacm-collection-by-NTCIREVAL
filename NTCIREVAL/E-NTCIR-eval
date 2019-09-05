@@ -1,0 +1,62 @@
+#!/bin/sh
+# compute evaluation metrics 
+# using a erel (equivalence classes of relevant items) file
+# and a res file for each directory
+
+# NOTE: erel file and run file need to use TAB as the separator.
+
+if [ $# -lt 6 ]; then
+    echo "usage: `basename $0` <topicIDfile> <erelsuf> <evaluationname> <separator> <options> [runlist]" >&2
+    echo " e.g.: echo stopic-testrun | `basename $0` stopic-test.eqrels.tid erel test \";\" -g 1:3:7" >&2
+    exit 1
+fi
+
+# about <options>:
+# If you want nDCG@10, nDCG@100 etc, 
+# try adding "-cutoffs 10,100 -g 1:3:7".
+# default cutoff is 1000.
+# The g option is required for specifying the 
+# number of relevance levels and the gain values.
+
+# set your own ntcir_eval path here
+NEVPATH=ntcir_eval
+
+AWK="/usr/bin/env gawk"
+
+OSUF="enev"
+RESSUF="res"
+LABSUF="elab"
+
+
+TIDFILE=$1
+RELSUF=$2
+OUTSTR=$3
+SEP=$4
+shift
+shift
+shift
+shift
+
+COMPOPT=$@
+
+
+while read RUN; do
+
+ OUTF=$RUN.$OUTSTR.$OSUF
+
+ cat $TIDFILE | while read TID; do
+
+  LABFILE=$TID/$TID.$RUN.$OUTSTR.$LABSUF
+
+  cat $TID/$TID.$RUN.$RESSUF |
+  $NEVPATH label -r $TID/$TID.$RELSUF -sep "$SEP" > $LABFILE
+  echo "created $LABFILE" >&2
+
+  cat $LABFILE |
+  $NEVPATH compute -r $TID/$TID.$RELSUF $COMPOPT -out $TID -sep "$SEP"
+ 
+ done > $OUTF
+
+ echo "created $OUTF" >&2
+
+done

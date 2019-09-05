@@ -1,0 +1,168 @@
+HOW TO USE NTCIREVAL FOR NTCIR-8 COMMUNITY QA EVALUATION
+							Revised May 7, 2016
+                                                  April 2011 Tetsuya Sakai
+
+0 INTRODUCTION
+
+This document explains how to use NTCIREVAL
+for NTCIR-8 Community QA task evaluation [9].
+
+The usual procedure is as follows:
+
+(1) For each question,
+create a "rel" file
+e.g. "BArel" (gold standard data based on Best Answers) and/or
+     "GAWrel" (gold standard data based on Good Answers with Weights) [9].
+You usually need to do this just once.
+Section 1 provides more details.
+
+(2) For each question,
+use your system to create a "res" (result) file,
+which should be a ranked list of answerIDs.
+Section 2 provides more details.
+
+(3) For each topic, use ntcir_eval to compute
+various evaluation metrics based on a rel file and a res file.
+Finally, compute mean performance values over the entire question set.
+Section 3 provides more details.
+
+
+1. CREATE rel FILES
+
+To evaluate NTCIR-8 Community QA task runs using NTCIREVAL,
+you need an NTCIR-format qrels file.
+Each line in an NTCIR-format qrels file 
+consists of three fields:
+<questionID> <answerID> <relevance_level>
+
+where a relevance level can be L0, L1, L2, ...
+(L0 means judged nonrelevant).
+
+Use the NTCIRsplitqrels script to 
+break the qrels file into per-topic "rel" (relevant) file as follows:
+
+*EXAMPLE*
+
+% NTCIRsplitqrels ntcir8cqa-GAW.qrels GAWrel
+
+*EXAMPLE*
+
+% NTCIRsplitqrels ntcir8cqa-BA.qrels BArel
+
+In the case of the first example, NTCIRsplitqrels does three things:
+(1) Create question directories under the current directory 
+    (if they do not exist already);
+(2) Create a rel file under each question directory,
+    ./<questionID>/<questionID>.GAWrel
+(3) Create a file containing a list of questionIDs,
+    ntcir8cqa-GAW.qrels.tid
+
+Each line in a rel file is of the form:
+<answerID> <relevance_level>.
+
+
+2. CREATE res files
+
+Use your CQA system to create
+a "res" (answer ranking result) file
+under each question directory:
+ ./<questionID>/<questionID>.<runname>.res
+
+A res file is simply a ranked list of answerIDs
+(in decreasing order of relevance).
+Thus line 1 should contain the answer at rank 1, and so on.
+NOTE: If there are ties, it is the system's responsiblity to 
+resolve them. The answers must be fully ranked.
+
+If you already have a single csv run file in 
+the submission format specified by the NTCIR-8 Community QA task [9],
+(i.e. csv file where each line is of the form <qid>,<aid>,<aid>...)
+you can break up this file into "res" files using
+the CQA-splitruns script included in NTCIREVAL:
+
+*EXAMPLE*
+
+% echo RUN-1.run.csv | CQA-splitruns
+% ls RUN-?.run.csv | CQA-splitruns
+
+This should create
+ ./<quetionID>/<questionID>.RUN-1.res 
+and so on.
+
+
+3. EVALUATE
+
+Now you have a rel file and a res file in each question directory.
+Time to compute evaluation metrics!
+For this you first use a script called NTCIR-eval, which
+calls a C program called ntcir_eval.
+Please edit this path in the script if necessary:
+NEVPATH=ntcir_eval
+
+Suppose you want to evaluate your RUN-1(.run.csv)
+with the NTCIR-8 Community QA GAW data,
+which have the relevance levels L0-L8 [9].
+Since the number of answers per question in the NTCIR-8 Community QA
+question set ranges between 2 and 19,
+using a document cutoff of 20 suffices.
+Hence use NTCIR-eval as follows:
+
+*EXAMPLE*
+
+% echo RUN-1 | NTCIR-eval ntcir8cqa-GAW.qrels.tid GAWrel test -cutoffs 1,20 -g 1:2:3:4:5:6:7:8
+
+where
+
+Arg 1: list of topicIDs;
+Arg 2: suffix of the rel files 
+       based on which evaluation metrics are to be computed;
+Arg 3: arbitrary string that typically represents
+       a particular parameter setting for NTCIR-eval
+       (e.g. which rel files and what options are used);
+The rest of the arguments are options handed down to 
+the C program ntcir_eval:
+
+"-cutoffs 1,20" means cutoff-based metrics such as
+    precision and nDCG are computed at ranks 1 and 20; and
+"-g 1:2:3:4:5:6:7:8" means that the test collection has L0-L8 answers,
+    and that a gain value of 1 should be given to each L1-relevant answer,
+    and a gain value of 2 should be given to each L2-relevant answer etc.
+    If you want to assign different gain values to each relevance levels,
+    try "-g 1:3:7:15:31:63:127:255" and so on.
+
+The -g option is required in order to declare
+the maximum relevance level for the test collection 
+as well as the gain values.
+
+Whereas, the cutoff option is optional:
+the default document cutoff is 1000.
+However, for the NTCIR-8 Community QA data,
+computing metrics at ranks 1 and 20 should suffice [9].
+
+If RUN-1 is evaluated using NTCIR-eval as mentioned above,
+NTCIR-eval will do two things:
+(1) create "lab" files
+e.g. ./<questionID>/<questionID>.RUN-1.test.lab
+which are the same as the res files but 
+with relevance levels indicated with each answerID.
+This is useful for per topic analysis (e.g. manually looking at 
+how good the answer rankings actually are).
+It is okay to remove these files if you do not need them.
+
+(2) create a "nev" (ntcir_eval) file, e.g. RUN-1.test.nev.
+This file contains the performance values for each topic,
+along with some additional information.
+The metrics used at NTCIR-8 Community QA task,
+namely, nG@1, nDCG and Q correspond to
+MSnDCG@0001, MSnDCG@0020 and Q-measure in the nev file.
+
+See Section 3 of README for more details on ntcir_eval and the nev file.
+
+
+Now that you have a nev file,
+you can easily
+created topic-by-run matrices (using Topicsys-matrix) and/or
+compute the mean performance over the question set (using NEV2mean)
+for the metric of your choice.
+
+See Section 3.2 of README.adhoc for more details.

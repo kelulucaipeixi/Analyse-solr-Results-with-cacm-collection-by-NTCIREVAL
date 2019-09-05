@@ -1,0 +1,282 @@
+HOW TO USE NTCIREVAL FOR RANKED RETRIEVAL EVALUATION BASED ON
+EQUIVALENCE CLASSES
+					Revised May 7, 2016
+					April 2012 Tetsuya Sakai
+
+0. INTRODUCTION
+
+This document explains how to use NTCIREVAL
+for ranked retrieval evalaution based on equivalence classes (ECs) [11].
+
+In EC-based evaluation, relevant items form ECs.
+Thus, items within a EC are interchangeable.
+For example, if strings A and B are from the same class,
+and if a system output has A at rank 2 and B at rank 4,
+then EC-based evaluation treats B at rank 4 as nonrelevant
+(i.e. redundant).
+
+Thus, EC-based metrics such as "EC-Q" (EC version of Q-measure)
+and "EC-nDCG@10" (EC version of nDCG) can be computed.
+
+The usual procedure is as follows:
+
+(1) For each topic,
+create a "erel" (relevant items with ECs) file.
+You usually need to do this just once.
+Section 1 provides more details.
+
+(2) For each topic,
+use your system to create a "res" (result) file,
+which should be a ranked list of items.
+Section 2 provides more details.
+
+(3) For each topic,
+use the C program ntcir_eval to compute
+various evaluation metrics
+based on an erel file and a res file.
+Finally, compute mean performance values
+over the entire topic set.
+Section 3 provides more details.
+
+
+1. CREATE erel FILES
+
+To conduct EC-based evaluation using NTCIREVAL,
+you need an "eqrels" file.
+Each line in an eqrels file consists of four fields:
+<topicID>;<string>;<relevance_level>;<EC_ID>
+
+where a relevance level can be L0, L1, L2, ...
+(L0 means judged nonrelevant) and
+EC_ID is a positive integer representing an equivalence class ID.
+
+NOTE: the default separator is a semicolon, as <string> may contain white
+spaces.
+
+NTCIREVAL contains a sample eqrels file (encoded in UTF-8) called
+e-test.eqrels.
+From the eqrels file, per-topic "erel" files must be created.
+Move to a directory for your experiments and
+use NTCIRsplitqrels as follows:
+
+*EXAMPLE*
+
+% NTCIRsplitqrels e-test.eqrels erel ";"
+
+This will do three things:
+(1) Create topic directories under the 
+current directory (if they do not exist already);
+(2) Create an erel file under each topic directory,
+    e.g. ./<topicID>/<topicID>.erel
+(3) Create a file containing a list of topicIDs, 
+    e.g. e-test.eqrels.tid
+
+Each line in an erel file is of the form:
+<string>;<relevance_eval>;<EC_num>.
+
+
+2. CREATE res FILES
+
+To evaluate your system
+you need to create a "res" (system result) file
+under each topic directory:
+ ./<topicID>/<topicID>.<runname>.res
+
+A res file is simply a ranked list of items
+(in decreasing order of relevance).
+Thus line 1 should contain the item retrieved at rank 1, and so on.
+The res file can also be empty (i.e. no search result).
+NOTE: If there are ties, it is the system's responsiblity to 
+resolve them. The documents must be fully ranked.
+
+Given a list of topics (with topicIDs),
+you can write your own script to
+create a res file under each topic directory.
+
+Alternatively, if you already have a single file in the "erun" format:
+<topicID>;<dummy>;<string>;<rank>;<score>;<runname>
+(NTCIREVAL includes a sample file called e-testrun.)
+
+then you can use a script from NTCIREVAL called TRECsplitruns
+to break it into per-topic res files, as follows:
+
+*EXAMPLE*
+
+% echo e-testrun | ./TRECsplitruns e-test.eqrels.tid -s ";"
+
+Make sure you specifiy the right separator for the input run file 
+using the -s option.
+This should create a res file for each topicID listed in the tid file.
+e.g. ./<topicID>/<topicID>.e-testrun.res
+
+NOTE: the script TRECsplitruns ignores
+the <dummy>, <rank>, <docscore> and <runname>
+fields in the TREC-format run file.
+It simply extracts a list of ranked items for each topic
+without modifying the original ranking.
+
+
+3. EVALUATE
+
+
+ 3.1 COMPUTE PER-TOPIC VALUES USING E-NTCIR-eval
+
+
+Now you have an erel file and a res file
+in each topic directory.
+Time to compute evaluation metrics!
+For this you first use a script called
+E-NTCIR-eval, which calls a C program 
+called ntcir_eval.
+Please edit this path in the script if necessary:
+NEVPATH=ntcir_eval
+
+Suppose you have an EC-based test collection with relevance levels L0-L5
+and that you want to evaluate the run stopic-testrun by computing
+nDCG at 10 and at 1000. Then use E-NTCIR-eval as follows:
+
+*EXAMPLE*
+% echo e-testrun | E-NTCIR-eval e-test.eqrels.tid erel erel ";" -cutoffs 10,1000 -g 1:2:3:4:5
+
+where
+Arg 1: list of topicIDs;
+Arg 2: suffix of the erel files based on which
+       evaluation metrics are to be computed;
+Arg 3: arbitrary string that typically represents
+       a particular parameter setting for 
+       E-NTCIR-eval
+       (e.g. which erel files and what options are used);
+Arg 4: separator used in input files
+The rest of the arguments are options handed
+down to the C program ntcir_eval:
+
+"-cutoffs 10,1000" means document-cutoff-based metrics such as 
+    precision and nDCG are computed at ranks 10 and 1000; and
+"-g 1:2:3:4:5" means that the test collection has L1- to L5-relevant documents,
+    and that a gain value of 1 should be given to each L1-relevant document
+    and a gain value of 2 should be given to each L2-relevant document, etc.
+
+The -g option is required in order to declare
+the maximum relevance level for the test collection
+as well as the gain values.
+
+The -cutoff option is optional: the default is 1000.
+You can also set any number of cutoffs, e.g. "-cutoffs 10" "-cutoffs 1,10,100"
+    
+If e-testrun is evaluated using E-NTCIR-eval
+as mentioned above, E-NTCIR-eval will do two things:
+
+(1) create "elab" files 
+e.g. ./<topicID>/<topicID>.e-testrun.erel.elab
+which are the same as the res files but with relevance levels and EC IDs.
+The files are useful for per topic analysis
+(e.g. manually looking at how good the search results actually are).
+It is okay to remove these files if you do not need them.
+
+(2) create a "enev" file, e.g. e-testrun.erel.enev.
+This file contains the EC-based performance values for each topic,
+along with some additional information.
+See Section 3 of README for more details.
+
+In our previous examples, 
+e-testrun.erel.enev should contain the EC-measures,
+i.e. EC-versions of Q-measure, nDCG etc.
+
+For example, e-test.eqrels contains two relevant items for topic 0001, 
+but these two items belong to the same class.
+Therefore, when this file is used as the gold standard,
+metrics are computed by assuming that the total number of relevant items 
+is 1 (not 2).
+The highest relevance within each EC
+is taken to be the relevance of that class,
+when defining the ideal ranked list [5].
+
+
+ 3.2 CREATING TOPIC-BY-RUN MATRICES AND/OR COMPUTING MEAN SCORES [OPTIONAL]
+
+Now that you have an enev file,
+you can easily create topic-by-run matrices (using Topicsys-matrix) and/or
+compute the mean performance over your topic set (using NEV2mean)
+for the metric of your choice.
+
+See Section 3.2 in README.adhoc for details.
+
+
+4. MORE ABOUT ntcir_eval FOR EC-BASED EVALUATION
+
+This section discusses how "label" and "compute" subcommands
+of ntcir_eval can be used in EC-based evaluation.
+These subcommands are called from the E-NTCIR-eval script.
+
+
+ 4.1 "label"
+
+In EC-based evaluation, the label subcommand
+should be used with a "-ec" option,
+so that redundant items from the same ECs are
+treated as nonrelevant.
+The following example illustrates the effect of
+using -ec with the label subcommand.
+
+*EXAMPLE*
+
+% cat esample.erel
+aaa L3 1
+bbb L1 1
+ccc L0 2
+% cat test.res
+bbb
+aaa
+% cat test.res | ntcir_eval label -r esample.erel 
+bbb L1
+aaa L3
+% cat test.res | ntcir_eval label -r esample.erel -ec
+bbb L1 1
+aaa
+
+Note that "aaa" is not marked as relevant when -ec is used,
+as "aaa" and "bbb" are from the same EC.
+
+
+ 4.2 "compute"
+
+In EC-based evaluation,
+the compute subcommand should also be used
+with a -ec option.
+
+*EXAMPLE*
+
+at test.res | ntcir_eval label -r esample.erel -ec | ntcir_eval compute -r esample.erel -ec -g 1:2:3:4:5 -cutoffs 10,1000
+ # syslen=2 jrel=1 jnonrel=0
+ # r1=1 rp=1
+ RR=                  1.0000
+ O-measure=           0.5000
+ P-measure=           0.5000
+ P-plus=              0.5000
+ AP=                  1.0000
+ Q-measure=           0.5000
+ NCUgu,P=             0.3333
+ NCUgu,BR=            0.1667
+ NCUrb,P=             1.0000
+ NCUrb,BR=            0.5000
+ RBP=                 0.0100
+ ERR=                 0.1667
+ AP@0010=             1.0000
+ Q@0010=              0.5000
+ nDCG@0010=           0.3333
+ MSnDCG@0010=         0.3333
+ P@0010=              0.1000
+ nERR@0010=           0.3333
+ Hit@0010=            1.0000
+ AP@1000=             1.0000
+ Q@1000=              0.5000
+ nDCG@1000=           0.3333
+ MSnDCG@1000=         0.3333
+ P@1000=              0.0010
+ nERR@1000=           0.3333
+ Hit@1000=            1.0000
+
+The above metrics are the EC-versions of standard metrics,
+i.e. EC-Q, EC-nDCG etc.
+
+More general information on ntcir_eval can be found in Section 3 of README.

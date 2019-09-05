@@ -1,0 +1,42 @@
+#!/bin/sh
+# from an IANEV file, pick IA metrics and create a pseudo nev file
+
+if [ $# -lt 4 ]; then
+    echo "usage: `basename $0` <runlist> <tidlist> <IAnevsuf> <metric>...">&2
+    echo " e.g.: `basename $0` DRCruns DRC.tid l10.IAnev IA-nERR@0010">&2
+    exit 1
+fi
+
+RLIST=$1
+TIDLIST=$2
+NEVSUF=$3
+shift
+shift
+shift
+
+SUF="nev"
+
+#$@ now contains metrics
+
+T=$HOME/bin
+AWK="/usr/bin/env gawk"
+
+# number of topics
+
+for METRIC in $@; do
+
+ cat $RLIST | while read RUN; do
+
+  OUTF=$RUN.$NEVSUF.$METRIC.$SUF
+
+  cat $TIDLIST | while read TID; do
+
+   grep "^$TID SUMp= .* ${METRIC}=" $RUN.$NEVSUF
+
+  done | $AWK '{print $1, $(NF-1), $NF}' > $OUTF
+
+  echo "created $OUTF" >&2
+ 
+ done
+
+done

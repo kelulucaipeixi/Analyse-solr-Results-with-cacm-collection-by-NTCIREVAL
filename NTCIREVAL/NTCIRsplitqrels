@@ -1,0 +1,53 @@
+#!/bin/sh
+# Break an NTCIR-format qrels file into per-topic rel files.
+# 2nd argument is the rel file suffix that you need to specify,
+# e.g. rel for true qrels, psrel for pseudo-qrels...
+
+# Creates topic directories (if they do not exist) under current directory.
+# Also creates a list of topicIDs based on the qrels file.
+
+if [ $# -lt 2 ]; then
+    echo "usage: `basename $0` <NTCIR_qrelsfile> <relsuf> [<separator>]" >&2
+    echo " e.g.: `basename $0` ACLIA1-JA.qrels rel" >&2
+    echo " e.g.: `basename $0` e-test.eqrels erel \";\"" >&2
+    exit 1
+fi
+
+QRELS=$1
+RELSUF=$2
+shift
+shift
+
+if [ $# -eq 1 ]; then
+
+ SEP=$1;
+ shift
+
+else
+
+ SEP=" "
+
+fi
+
+TIDSUF="tid"
+
+AWK="/usr/bin/env gawk"
+
+# create a topicid file from the qrel file
+
+TIDFILE=$QRELS.$TIDSUF
+cat $QRELS | $AWK -F "$SEP" '{print $1}' | sort -u > $TIDFILE
+echo "created $TIDFILE" >&2
+
+# create a rel assessment file in each topic directory
+
+cat $TIDFILE | while read TID; do
+
+ mkdir -p $TID
+ OUTF=$TID/$TID.$RELSUF
+
+ cat $QRELS | $AWK -F "$SEP" '
+ $1=="'$TID'"{ print }' | sed "s/^${TID}${SEP}//" > $OUTF
+ echo "created $OUTF" >&2
+
+done

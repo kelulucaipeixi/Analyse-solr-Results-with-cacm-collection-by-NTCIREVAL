@@ -1,0 +1,59 @@
+#!/bin/sh
+# break a TREC-format run file into per-topic res files
+# truncate if there are more than DOCLIMIT docs
+# The default field separator is white space:
+# edit the SEP variable below if a different separator is used.
+
+# makes empty files even if the runfile is empty for some topics
+
+# should work even if topicIDs in run file are not zero-prefixed
+
+if [ $# -lt 2 ]; then
+    echo "usage: `basename $0` <topicIDlist> <doclimit> [-s <separator>] [runpathlist]" >&2
+    echo " e.g.: echo TSB-J-J-D-01 | `basename $0` ntcir6clirJ.qrels.tid 1000" >&2
+    echo " e.g.: echo e-testrun | `basename $0` e-test.eqrels.tid 10 -s \";\"" >&2
+    exit 1
+fi
+
+AWK="/usr/bin/env gawk"
+
+TIDLIST=$1
+DOCLIMIT=$2
+shift
+shift
+
+if [ $# -eq 2 ]; then # -s <separator>
+
+  SEP=$2;
+  shift
+  shift
+
+else # default separator
+
+  SEP=" "
+
+fi
+
+SUF="res"
+
+
+cat $1 | while read RUNPATH; do
+
+ RUN=`echo $RUNPATH | sed 's/^.*\///'`
+
+ cat $TIDLIST | while read TID; do
+
+  mkdir -p $TID
+  OUTF=$TID/$TID.$RUN.$SUF
+
+#  SHORTTID=`echo $TID | sed "s/^[0]*//"`
+
+#  cat $RUNPATH | $AWK -F "$SEP" '$1=="'$SHORTTID'"{ print $3 }' |
+  cat $RUNPATH | $AWK -F "$SEP" '$1=="'$TID'"{ print $3 }' |
+  head -$DOCLIMIT > $OUTF
+
+  echo "created $OUTF" >&2
+ 
+ done 
+
+done

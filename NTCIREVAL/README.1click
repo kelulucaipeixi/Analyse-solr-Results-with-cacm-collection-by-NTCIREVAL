@@ -1,0 +1,220 @@
+HOW TO USE NTCIREVAL FOR 1CLICK EVALUATION
+					Revised May 7, 2016
+					April 2012 Tetsuya Sakai
+
+0. INTRODUCTION
+
+This document explains how to use NTCIREVAL
+for 1CLICK (one click information access) evaluation.
+
+The usual procedure is as follows:
+
+(1) For each question,
+create a "nug" (gold-standard nugget) file,
+which contains nuggetIDs, nugget weights 
+and "vital string lengths" of gold-standard nuggets [12].
+You usually need to do this just once.
+Section 1 provides more details.
+
+(2) For each question,
+create a "mat" (matched nugget) file,
+which represents 
+the set of nuggets that a 1CLICK system managed to cover,
+together with the nugget positions.
+(The 1st line should contain the X-string length.)
+A file downloaded from the nugget match evaluation interface [12]
+is used as input.
+Section 2 provides more details.
+
+(3) For each question,
+use the C program ntcir_eval to compute 
+some nugget-based evaluation metrics 
+based on a nug file and a mat file.
+Finally, compute mean performance values over the entire question set.
+Section 3 provides more details.
+
+
+1. CREATE nug FILES
+
+First, you need to obtain the ".nuggets" file from the 1CLICK organisers.
+This single file contains the statistics of gold-standard nuggets 
+for all questions.
+
+A ".nuggets" file is of the following format:
+% cat 1C0-test.nuggets
+1C0-0001 N0001 3 10
+1C0-0001 N0002 1 5
+1C0-0001 N0003 3 5
+1C0-0002 N0001 2 2
+1C0-0002 N0002 6 5
+1C0-0002 N0003 2 3
+1C0-0002 N0004 2 2
+
+where
+Field 1: question ID;
+Field 2: nugget ID;
+Field 3: nugget weight (i.e. importance);
+Field 4: vital string length. A vital string is a short text string
+         that is probably necessary to be included in the 1CLICK system output
+	 in order to cover the meaning of the nugget in the system output.
+	 For example, if the vital length string is 10 for a nugget,
+	 this means that probably at least 10 characters are absolutely
+	 required in order to convey the meaning of that nugget withint the
+	 1CLICK output [12].
+(There may be some extra fields in the ".nugget" and 
+the per-topic nug files.)	 
+
+You need to break the ".nugget" file into per-question "nug" files
+using a script from the NTCIREVAL package called 1CLICK-splitnuggets
+as follows:
+
+*EXAMPLE*
+
+% 1CLICK-splitnuggets 1C0-test.nuggets test.nug
+created 1C0-test.nuggets.tid
+created 1C0-0001/1C0-0001.test.nug
+created 1C0-0002/1C0-0002.test.nug
+
+This creates a list of question IDs (1C0-test.nuggets.tid)
+and per-topic nug files, which are of the form
+<nuggetID> <nuggetweight> <vitalstringlen>.
+
+These are the gold-standard files for evaluating different 1CLICK
+system outputs.
+
+
+2. CREATE mat FILES
+
+The nugget match evaluation interface [12]
+is used for manually identifying nuggets
+in a 1CLICK system output.
+The result of this matching procedure can then be downloaded from 
+the interface.
+
+We call the file a batch match file.
+A batch match file looks like this:
+% cat 1CLICKRUN-D-1
+1C0-0001 syslen= 500
+1C0-0001 N0001 100
+1C0-0001 N0002 50
+1C0-0002 syslen= 10
+1C0-0002 N0002 400
+
+where (except for the 1st line that shows the
+actual size of the X-string)
+Field 1: question ID;
+Field 2: nugget ID of the nugget identified by the assessor in the output;
+Field 3: nugget offset (position) as identified by the assessor.
+
+NOTE: the above file is deliberately unrealistic
+for debugging purposes: Note that if the X-string length is 10,
+it is impossible that a nugget match position is 400.
+
+The batch match file needs to be broken into per-topic
+"mat" file using a script called 1CLICK-splitmatch as follows:
+
+*EXAMPLE*
+
+% ls 1CLICKRUN-D-? | 1CLICK-splitmatch 1C0-test.nuggets.tid 
+created 1C0-0001/1C0-0001.1CLICKRUN-D-1.mat
+created 1C0-0002/1C0-0002.1CLICKRUN-D-1.mat
+created 1C0-0001/1C0-0001.1CLICKRUN-D-2.mat
+created 1C0-0002/1C0-0002.1CLICKRUN-D-2.mat
+
+Each mat file is of the form:
+<nuggetID> <offset>
+(except for the first line which is of the form "syslen= <syslen>").
+
+
+3. COMPUTE EVALUATION METRICS
+
+ 3.1 COMPUTE PER-TOPIC VALUES USING 1CLICK-eval
+
+Now you have a nug file and a mat file in each question directory.
+Time to compute evaluation metrics!
+For this you use a script called 1CLICK-eval, which
+calls a C program called ntcir_eval.
+Please edit this path in the script if necessary:
+NEVPATH=ntcir_eval
+
+Two run files 1CLICKRUN-D-{1,2} can be evaluated as follows:
+
+*EXAMPLE*
+
+% ls 1CLICKRUN-D-? | 1CLICK-eval 1C0-test.nuggets.tid test.nug test
+created 1CLICKRUN-D-1.test.1cl
+created 1CLICKRUN-D-2.test.1cl
+
+where
+Arg 1: list of questionID ;
+Arg 2: nug file suffix (See section 1);
+Arg 3: arbitrary string that typically represents a particular
+       experimental condition.
+
+The output file, called a 1cl file, looks like this:
+
+% cat 1CLICKRUN-D-1.test.1cl 
+1C0-0001 #nuggets= 3 #matched= 2 #syslen= 500
+1C0-0001 Recall=              0.667
+1C0-0001 W-recall=            0.571
+1C0-0001 S-measure=           0.482
+1C0-0001 S-flat=              0.482
+1C0-0001 T-measure=           0.030
+1C0-0001 T-flat=              0.030
+1C0-0001 F-flat=              0.056
+1C0-0002 #nuggets= 4 #matched= 1 #syslen= 10
+1C0-0002 Recall=              0.250
+1C0-0002 W-recall=            0.500
+1C0-0002 S-measure=           0.101
+1C0-0002 S-flat=              0.101
+1C0-0002 T-measure=           0.500
+1C0-0002 T-flat=              0.500
+1C0-0002 F-flat=              0.169
+
+The above 1cl file shows, for example,
+that there are three gold-standard nuggets for question 1C0-0001,
+and that only two of them were found within the output string of 1CLICKRUN-D-1.
+The file also shows some per-topic evaluation metric values.
+
+Recall means nugget recall (nuggets found over all nuggets).
+Weighted recall is similar, except that the nugget weights are used
+in the computation.
+
+S-measure is similar to Weighted recall,
+but takes the nugget postitions into account.
+That is, the system receives a higher score
+if a nugget is found near the beginning of the text
+than if it is found near the end.
+For this discounting purpose, S-measure has a parameter called L,
+which is set to 1000 in the script.
+(L=1000 represents the average number of characters
+that an average Japanese user can read within 2 minutes [12].
+It can be set to different values for other languages.)
+
+S-flat is defined as min(1, S-measure).
+As raw S-measure may in theory exceed 1, 
+Sflat ensures that it is bounded above by 1.
+
+
+T-measure represents Vital String Concentration,
+which is basically nugget precision:
+sum of vital string lengths for all matched nuggets
+are divided by the actual X-string length.
+
+T-flat is min(1, T-measure).
+
+
+F-flat is like the standard F-measure:
+when beta is set to one (see the 1CLICK-eval script),
+it is the harmonic mean of T-flat and S-flat.
+
+
+
+ 3.2 CREATE TOPIC-BY-RUN MATRICES AND/OR COMPUTE MEAN SCORES [OPTIONAL]
+
+Now that you have an 1cl file,
+you can easily created topic-by-run matrices (using Topicsys-matrix) and/or
+compute the mean performance over your question set (using NEV2mean)
+for the metric of your choice.
+
+See Section 3.2 of README.adhoc for more information.

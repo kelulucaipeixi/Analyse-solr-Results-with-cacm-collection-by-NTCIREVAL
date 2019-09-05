@@ -1,0 +1,42 @@
+#!/bin/sh
+# Break a 1CLICK format nugget file into per-topic nug files.
+# 1CLICK format:
+# <topicID> <nuggetID> <nugget weight> <vital strlen> [<nugget grade1>,...]
+
+# 2nd argument is the per-topic nug file suffix that you need to specify.
+# nug file format:
+# <nuggetID> <nugget weight> <vital strlen>
+
+# Creates topic directories (if they do not exist) under current directory.
+# Also creates a list of topicIDs based on the 1CLICK format nugget file.
+
+if [ $# -ne 2 ]; then
+    echo "usage: `basename $0` <1CLICK nugget file> <nugsuf>" >&2
+    echo " e.g.: `basename $0` 1C1-formal.nuggets formal.nug" >&2
+    exit 1
+fi
+
+FILE=$1
+NUGSUF=$2
+shift
+shift
+
+TIDSUF="tid"
+
+# create a topicid file from the qrel file
+
+TIDFILE=$FILE.$TIDSUF
+cat $FILE | sed 's/ .*$//' | uniq > $TIDFILE
+echo "created $TIDFILE" >&2
+
+# create a nug file in each topic directory
+
+cat $TIDFILE | while read TID; do
+
+ mkdir -p $TID
+ OUTF=$TID/$TID.$NUGSUF
+
+ grep "^$TID " $FILE | sed 's/^[^ ]* //' | sort -u > $OUTF
+ echo "created $OUTF" >&2
+
+done

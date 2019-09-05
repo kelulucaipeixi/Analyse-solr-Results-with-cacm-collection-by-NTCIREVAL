@@ -1,0 +1,49 @@
+#!/bin/sh
+# Break a 1CLICK matched nugget file into per-topic mat files.
+# 1CLICK matched nugget format:
+# <topicID> <nuggetID> <offset>
+
+# THIS SCRIPT ENSURES THAT 
+# the FIRST nugget match area is used for each nugget,
+# even if multiple match areas are included in the output from
+# the evaluation interface.
+
+# mat file format:
+# <nugget weight> <vital strlen>
+
+if [ $# -lt 1 ]; then
+    echo "usage: `basename $0` <topicidlist> < <runpathlist>" >&2
+    echo " e.g.: echo TEST0-D-1 | `basename $0` 1C1-formal.nuggets.tid" >&2
+    exit 1
+fi
+
+SUF="mat"
+
+AWK="/usr/bin/env gawk"
+
+TIDFILE=$1
+shift
+
+cat $1 | while read RUNPATH; do
+
+ RUN=`echo $RUNPATH | sed 's/^.*\///'`
+
+ cat $TIDFILE | while read TID; do
+
+  OUTF=$TID/$TID.$RUN.$SUF
+
+  ( grep "^$TID syslen=" $RUNPATH | $AWK '{print $2, $3; exit}';
+
+   grep "^$TID " $RUNPATH | grep -v "syslen=" | sort -n -k 2,3 |
+  $AWK 'BEGIN{prev=""}
+prev!=$2{print $2, $3} # print only if the nugget is new, with the
+                       # smallest offset
+{prev=$2}
+' | sort ) > $OUTF
+
+  echo "created $OUTF" >&2
+
+ done
+
+done
+

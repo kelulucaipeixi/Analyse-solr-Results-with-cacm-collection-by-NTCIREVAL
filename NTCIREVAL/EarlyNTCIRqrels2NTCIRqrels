@@ -1,0 +1,28 @@
+#!/bin/sh
+# converts an early-NTCIR qrels file (with S, A, B labels)
+# into an NTCIR-format qrels file
+# INPUT  early-NTCIR qrels:  <tid> <SABC> <docno> <01>
+# OUTPUT NTCIR-format qrels: <tid> <docno> <relevance_level>
+
+# Note:
+# the awk program belows maps early-NTCIR relevance levels to
+# NTCIR relevance levels as follows:
+# CLIR S-relevant         -> NTCIR L3-relevant
+# CLIR A-relevant         -> NTCIR L2-relevant
+# CLIR B-relevant         -> NTCIR L1-relevant
+# CLIR judged nonrelevant -> NTCIR L0-relevant
+# If you want a different mapping, you can edit the awk code.
+
+if [ $# -gt 1 ]; then
+    echo "usage: `basename $0` [Early-NTCIR qrels file]" >&2
+    exit 1
+fi
+
+AWK="/usr/bin/env gawk"
+
+cat $1 | $AWK '
+$2 == "S"{ print $1, $3, "L3"; next }
+$2 == "A"{ print $1, $3, "L2"; next }
+$2 == "B"{ print $1, $3, "L1"; next }
+$2 == "C"{ print $1, $3, "L0"; next }
+'

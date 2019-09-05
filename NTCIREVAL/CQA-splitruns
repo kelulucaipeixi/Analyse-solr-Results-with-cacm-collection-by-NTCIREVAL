@@ -1,0 +1,31 @@
+#!/bin/sh
+# input: <qid>,<aid>,<aid>...
+# make a res file for each question
+
+if [ $# -gt 1 ]; then
+    echo "usage: `basename $0` < <runlist>" >&2
+    exit 1
+fi
+
+
+SUF="res"
+
+cat $1 | while read CSVF; do
+
+ RUN=`basename $CSVF .run.csv`
+
+ cat $CSVF | sed 's/,/ /g' | while read QID AIDLIST; do
+
+  OUTF=$QID/$QID.$RUN.$SUF
+
+  for AID in $AIDLIST; do # in principle works with multiple best answers
+
+   echo $AID $RLEVEL      
+    
+  done > $OUTF
+
+  echo "created $OUTF" >&2
+
+ done
+  
+done 

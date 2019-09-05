@@ -1,0 +1,203 @@
+#!/bin/sh
+# create Irelv files (for I-recall, IA-metrics and P+Q),
+#        Grelv files and din files (for D- and DIN-measures)
+
+# INPUT DINprob (intent probability) FILE FORMAT:
+# <topicID> <intentnum> <prob> [inf/nav]
+# (make sure each intent has at least one rel doc)
+# If the 4th field is missing, din files will contain inf labels only
+
+# INPUT Dqrels (diversity qrels) FILE FORMAT:
+# <topicID> <intentnum> <docID> <rlevel (L0-L9)>
+
+# NOTE: this script can only handle Dqrels with relevance levels up to L9
+
+# OUTPUT DIN FILE FORMAT:
+# <intentnum> <inf/nav> <docID> <P(i|q)*d>
+# if inf/nav unavailable in DINprob, assume all intents are inf
+
+# OUTPUT IRELV/GRELV RELV FILE FORMAT:
+# <docID> <gain value> [in decreasing order of relevance, positive values only]
+
+if [ $# -lt 3 ]; then
+    echo "usage: `basename $0` <intent prob file> <Dqrels file> <relprefix> [<separator>]" >&2
+    echo " e.g.: `basename $0` Dtest.DINprob Dtest.Dqrels test" >&2
+    echo " e.g.: `basename $0` Dtest.DINprob Dtest.Dqrels test \";\"" >&2
+    exit 1
+fi
+
+INTP=$1
+DQR=$2
+RPREF=$3
+shift
+shift
+shift
+
+if [ $# -eq 1 ]; then
+
+ SEP=$1
+ shift
+
+else
+
+ SEP=" "
+
+fi
+
+# set the gain values here
+L1G=1
+L2G=2
+L3G=3
+L4G=4
+L5G=5
+L6G=6
+L7G=7
+L8G=8
+L9G=9
+
+#2^rellevel - 1
+#L1G=1
+#L2G=3
+#L3G=7
+#L4G=15
+#L5G=31
+#L6G=63
+#L7G=127
+#L8G=255
+#L9G=511
+
+TIDSUF="tid"
+IRELSUF="Irelv"
+DINSUF="din"
+GRELSUF="Grelv"
+
+AWK="/usr/bin/env gawk"
+
+# create a topicid file from the intp file
+
+TIDF=$INTP.$TIDSUF
+cat $INTP | $AWK -F "$SEP" '{print $1}' | sort -u > $TIDF
+echo "created $TIDF" >&2
+
+
+cat $TIDF | while read TID; do
+
+ mkdir -p $TID
+
+
+# create Irelv files
+
+ cat $DQR | $AWK -F "$SEP" '$1=="'$TID'" && $4 ~ /^L[1-9]$/{ print $2 }
+ ' | sort -u | sort -n | while read INTENT; do
+ # L0 and rel levels that are too high are ignored
+
+  OUTF=$TID/$TID.${RPREF}.${IRELSUF}$INTENT
+
+  cat $DQR | $AWK -F "$SEP" '
+#  $1=="'$TID'" && $2 == "'$INTENT'"{
+  $1=="'$TID'" && $2 == "'$INTENT'" && $4 != "L0"{
+   if( $4 == "L1" ){      gainv = '$L1G' }
+   else if( $4 == "L2" ){ gainv = '$L2G' }
+   else if( $4 == "L3" ){ gainv = '$L3G' }
+   else if( $4 == "L4" ){ gainv = '$L4G' }
+   else if( $4 == "L5" ){ gainv = '$L5G' }
+   else if( $4 == "L6" ){ gainv = '$L6G' }
+   else if( $4 == "L7" ){ gainv = '$L7G' }
+   else if( $4 == "L8" ){ gainv = '$L8G' }
+   else if( $4 == "L9" ){ gainv = '$L9G' }
+
+   print gainv, $3
+   
+  }' | sort -nr | while read GAINV STRING; do
+
+   echo "${STRING}${SEP}${GAINV}"
+  
+  done > $OUTF
+
+  echo "created $OUTF" >&2
+ 
+ done
+
+
+# create DIN file
+
+ DINF=$TID/$TID.${RPREF}.$DINSUF
+
+ cat $DQR | $AWK -F "$SEP" '
+  $1=="'$TID'" && $4 ~ /^L[1-9]$/{ print $2, $4, $3}
+# <intnum> <rellevel> <docno..>L0 and rel levels that are too high are ignored
+ ' | while read INTNUM RLEVEL DOCNO; do
+# docno may contain white spaces
+
+  PROB=`cat $INTP | $AWK -F "$SEP" '
+  $1=="'$TID'" && $2=="'$INTNUM'"{ prob = $3; exit }
+  END{ print prob } # zero if not found
+  '`
+
+  INFNAV=`cat $INTP | $AWK -F "$SEP" '
+  $1=="'$TID'" && $2=="'$INTNUM'"{
+   if( NF > 3 ){ infnav = $4 }
+   else{ infnav = "inf" }
+   print infnav;
+   exit
+  }
+  '`
+
+  PGV=`echo $RLEVEL | $AWK '
+  $0 == "L1" { gv = '$L1G'; exit }
+  $0 == "L2" { gv = '$L2G'; exit }
+  $0 == "L3" { gv = '$L3G'; exit }
+  $0 == "L4" { gv = '$L4G'; exit }
+  $0 == "L5" { gv = '$L5G'; exit }
+  $0 == "L6" { gv = '$L6G'; exit }
+  $0 == "L7" { gv = '$L7G'; exit }
+  $0 == "L8" { gv = '$L8G'; exit }
+  $0 == "L9" { gv = '$L9G'; exit }
+  END{ print '$PROB' * gv } # zero if not L1-9
+  '`
+
+  echo "${INTNUM}${SEP}${INFNAV}${SEP}${DOCNO}${SEP}${PGV}"
+ 
+ done > $DINF
+
+ echo "created $DINF" >&2
+
+
+# create Grelv file
+
+ OUTF=$TID/$TID.${RPREF}.$GRELSUF
+
+ cat $DINF | $AWK -F "$SEP" '{print $3, $4}' | sort |
+$AWK -F "$SEP" ' #INPUT: <docno> <P(i|q)*gi(d)> docno may contain space
+ { newdocno = $0; newgg = $0;
+   sub( / [^ ]*$/, "", newdocno );
+   sub( /^.* /, "", newgg )
+ }
+ NR==1{
+  docno=newdocno;
+  gg=newgg;
+  next
+ }
+ { # NR>1
+  if( newdocno == docno ){
+   gg += newgg;
+  }
+  else{ # new doc
+   print gg, docno;
+   docno=newdocno;
+   gg=newgg;   
+  }
+ }
+ END{
+  print gg, docno
+ }
+ ' | sort -nr | while read GG DOCNO; do
+
+ echo "${DOCNO}${SEP}${GG}"
+
+ done > $OUTF
+
+ echo "created $OUTF" >&2
+
+
+done
